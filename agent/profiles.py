@@ -117,6 +117,89 @@ def update_profile(email: str, patch: dict[str, Any]) -> dict[str, Any]:
     return prof
 
 
+def _company_slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-") or "unknown"
+
+
+def _company_path(company: str) -> str:
+    return os.path.join(_profiles_dir(), "company-" + _company_slug(company) + ".json")
+
+
+def _atomic_write(path: str, obj: Any) -> None:
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(obj, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)  # atomic
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def upsert_company_profile(job: dict[str, Any], scorecard: dict | None = None) -> dict | None:
+    """Best-effort per-COMPANY dossier, keyed company-<slug>.json — the
+    per-company-memory demo surface (a dossier per company Hermes has worked for).
+
+    Works for seeded/unclaimed jobs too (keyed by company, not email). Merges into
+    any existing dossier. Pass the vision-rig `scorecard` dict to record rig scores.
+    Never raises — a dossier write must never fail a render job.
+    """
+    try:
+        company = job.get("productName") or job.get("company")
+        if not company:
+            return None
+        path = _company_path(company)
+        prof: dict[str, Any] = {}
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    loaded = json.load(fh)
+                if isinstance(loaded, dict):
+                    prof = loaded
+            except (OSError, ValueError):
+                prof = {}
+
+        brief = job.get("brief")
+        if isinstance(brief, dict) and brief:
+            prof["briefHighlights"] = {
+                "oneLiner": brief.get("oneLiner"),
+                "audience": brief.get("audience"),
+                "tone": brief.get("tone"),
+                "brandAdjectives": brief.get("brandAdjectives"),
+                "category": brief.get("category"),
+            }
+        elif "briefHighlights" not in prof:
+            prof["briefHighlights"] = {}
+
+        if isinstance(scorecard, dict) and scorecard:
+            prof["rig"] = {
+                "verdict": scorecard.get("verdict") or scorecard.get("model_verdict"),
+                "scores": scorecard.get("scores") or {},
+            }
+        elif "rig" not in prof:
+            prof["rig"] = {}
+
+        video = job.get("videoUrl")
+        prof.update({
+            "company": company,
+            "url": job.get("url") or prof.get("url"),
+            "source": job.get("source") or prof.get("source"),
+            "tier": job.get("tier") or prof.get("tier"),
+            "status": job.get("status") or prof.get("status"),
+            "videoUrl": video or prof.get("videoUrl"),
+            "posterUrl": job.get("posterUrl") or prof.get("posterUrl"),
+            "revisionCount": job.get("revisionCount", prof.get("revisionCount", 0)),
+            "claimedBy": job.get("email") or prof.get("claimedBy"),
+            "jobId": job.get("jobId") or job.get("_id") or prof.get("jobId"),
+            # renderedAt refreshes when a cut is present; otherwise preserved
+            "renderedAt": (int(time.time() * 1000) if video else prof.get("renderedAt")),
+        })
+        _atomic_write(path, prof)
+        return prof
+    except Exception:  # noqa: BLE001 — best-effort; never fail the caller
+        return None
+
+
 def _main(argv: list[str]) -> int:
     if len(argv) >= 2 and argv[0] == "get":
         print(json.dumps(read_profile(argv[1]), indent=2))

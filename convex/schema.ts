@@ -17,6 +17,9 @@ export default defineSchema({
     status: v.union(
       v.literal("queued"),
       v.literal("research"),
+      // Parked: intake too thin to make a truthful trailer; we emailed the owner
+      // clarifying questions and are waiting on their reply (feedback.py re-queues).
+      v.literal("awaiting_info"),
       v.literal("storyboard"),
       v.literal("voiceover"),
       v.literal("rendering"),

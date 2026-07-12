@@ -1,0 +1,9 @@
+{
+  "name": "launchreel-email-inbound",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare inbound Email Worker for LaunchReel (reel@ctxmill.com -> Convex).",
+  "dependencies": {
+    "postal-mime": "^2.4.4"
+  }
+}

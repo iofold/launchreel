@@ -50,6 +50,7 @@ AGENT = os.path.join(REPO, "agent")
 if AGENT not in sys.path:
     sys.path.insert(0, AGENT)
 import storyboard as sb_mod  # noqa: E402 — reuse OpenAI caller + validation
+import compare  # noqa: E402 — two-video comparison handler (checked ahead of revision)
 
 DELIVER_PY = os.path.join(AGENT, "deliver.py")
 STORYBOARD_PY = os.path.join(AGENT, "storyboard.py")
@@ -380,16 +381,263 @@ def render_and_upload(job: dict, bundle_dir: str, revised: dict) -> tuple[str | 
 
 # --- per-item processing ---------------------------------------------------
 
+# --- intent classification (protects the one-revision budget) ----------------
+
+VALID_INTENTS = {"revision_request", "question", "acknowledgment", "new_order_info", "other"}
+
+STAGE_HUMAN = {
+    "queued": "queued and about to start",
+    "research": "having its website researched",
+    "awaiting_info": "waiting on the details we asked you for",
+    "storyboard": "getting its storyboard written",
+    "voiceover": "having its voiceover recorded",
+    "rendering": "rendering the motion graphics",
+    "awaiting_approval": "in final QA before it ships",
+    "delivered": "delivered — check your inbox for the final cut",
+    "failed": "with a human director for a hand-finish",
+}
+
+
+def classify_intent(text: str, job: dict) -> str:
+    """Classify one customer reply so an ack doesn't burn a revision and a status
+    question gets answered instead of re-rendered or escalated. Returns one of
+    VALID_INTENTS. Fails open to 'other' (flows to the existing routing) on any error."""
+    key = load_env("OPENAI_API_KEY")
+    if not key:
+        return "other"
+    system = (
+        "You classify ONE customer email reply to an automated launch-trailer service. "
+        "Return JSON {\"intent\": one of "
+        "[\"revision_request\",\"question\",\"acknowledgment\",\"new_order_info\",\"other\"]}.\n"
+        "- revision_request: asks for a specific CHANGE to the video (a color, headline, "
+        "hook, the CTA, music, tone, length, 'make it more X', 'can you change Y').\n"
+        "- question: asks something and expects an answer, not a change (status, timing, "
+        "'is it ready?', 'what is the status', 'how does this work?', 'what tier?').\n"
+        "- acknowledgment: content-free, no request or info ('ok', 'thanks', 'got it', "
+        "'sounds good', 'great', 'let me know', 'will do').\n"
+        "- new_order_info: provides product details — what it does, who it's for, features, "
+        "positioning (typically answering our questions).\n"
+        "- other: anything else. Judge ONLY from the reply text."
+    )
+    user = f"Job status: {job.get('status')}\nCustomer reply:\n{text.strip()[:1500]}\n\nClassify."
+    try:
+        raw, _usage = sb_mod.call_openai(REVISE_MODEL, key, [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ])
+        intent = str(raw.get("intent", "")).strip() if isinstance(raw, dict) else ""
+        return intent if intent in VALID_INTENTS else "other"
+    except Exception as e:  # noqa: BLE001 — fail open to the existing routing
+        log(f"intent classify failed ({e}); treating as 'other'")
+        return "other"
+
+
+def _reply_status(email, job: dict, send_email) -> None:
+    """Answer a status/timing question with the job's current stage + live dashboard
+    link — no revision, no escalation."""
+    if not email:
+        return
+    product = job.get("productName") or "your launch"
+    human = STAGE_HUMAN.get(job.get("status"), "in production")
+    web = (load_env("WEB_BASE_URL") or "https://launchreel.pages.dev").rstrip("/")
+    jid = job.get("jobId")
+    dash = f"{web}/#job={jid}" if jid else web
+    send_email(email, "reply", {
+        "subject": f"Re: your {product} trailer",
+        "heading": "Here's where your trailer's at \U0001F3AC",
+        "body": (f"Your {product} trailer is currently {human}.\n\n"
+                 f"You can watch it build live here:\n{dash}\n\n"
+                 "Reply any time with a change and we'll fold it in."),
+    })
+
+
+# Job statuses where the trailer isn't delivered yet but the customer can still steer
+# the cut. Feedback here re-queues the storyboard WITH the note (not a paid revision).
+PRE_DELIVERY_STATUSES = {"storyboard", "voiceover", "rendering", "awaiting_approval"}
+
+
 def process_item(item: dict, send_email) -> str:
-    """Handle one inbound email. Always returns a resolution string and always
-    acks the event. Never raises (the caller also guards)."""
+    """Route one inbound email. Stage-aware: a reply while the sender's most recent job
+    is awaiting_info (we asked for details) or pre-delivery (storyboard..awaiting_approval)
+    is folded back into THAT job and re-queued; a reply after delivery runs the existing
+    one-shot revision loop. Always acks exactly once; never raises (the caller guards)."""
     event_id = item["eventId"]
     email = item.get("email")
     text = (item.get("text") or "").strip()
     subject = item.get("subject") or ""
-    job = item.get("job")
+    latest = item.get("latestJob")  # sender's newest job (any status) — new Convex only
+    job = item.get("job")           # sender's newest job WITH a video — revision target
     log(f"inbound {event_id[-6:]}: from={email!r} subject={subject!r} text={text[:80]!r}")
 
+    # 0. Two-video comparison (the demo): if this inbound carries >=2 videos —
+    # attachments the worker uploaded (attachmentUrls) or direct links in the body —
+    # score both on the rubric and reply with the head-to-head, AHEAD of the
+    # revision path. handle_compare never raises and returns False when it's not a
+    # compare request, so the normal routing below is unaffected.
+    if compare.handle_compare(item, send_email=send_email):
+        ack(event_id, "compared")
+        return "compared"
+
+    # Intent gate: protect the one-revision budget and answer questions smartly. A
+    # content-free ack ("ok, let me know") must NOT trigger a revision; a status
+    # question ("what is the status") gets a status reply, not a re-render or an
+    # escalation. Only real change/answer intents fall through to the routing below.
+    # Runs only with text + a job to talk about; fails open to the routing otherwise.
+    target = latest if isinstance(latest, dict) else (job if isinstance(job, dict) else None)
+    if text and isinstance(target, dict):
+        intent = classify_intent(text, target)
+        log(f"intent={intent} (status={target.get('status')})")
+        if intent == "acknowledgment":
+            ack(event_id, "acknowledged")  # no email — a 👍 doesn't need a reply
+            return "acknowledged"
+        if intent == "question":
+            _reply_status(email, target, send_email)
+            ack(event_id, "status_answered")
+            return "status_answered"
+        # revision_request | new_order_info | other -> fall through to stage routing
+
+    # Stage-aware routing. Only fires on new Convex (which returns latestJob); on old
+    # Convex latest is None and we fall straight through to the delivered path — so an
+    # old worker keeps behaving exactly as before until it's restarted.
+    if isinstance(latest, dict):
+        status = latest.get("status")
+        if status == "awaiting_info":
+            return _handle_awaiting_info(event_id, email, text, subject, latest, send_email)
+        if status in PRE_DELIVERY_STATUSES:
+            return _handle_pre_delivery(event_id, email, text, subject, latest, send_email)
+
+    return _handle_delivered(event_id, email, text, subject, job, send_email)
+
+
+def _fetch_job(job_id: str) -> dict | None:
+    """Full job + owner email via the worker lookup endpoint (used on the rare
+    pre-delivery→delivered race)."""
+    status, payload = api("/api/worker/job", {"jobId": job_id})
+    if status == 200 and isinstance(payload.get("job"), dict):
+        return payload["job"]
+    return None
+
+
+def _fold_info(brief: dict, reply_text: str) -> dict:
+    """LLM-fold the customer's answer to our clarifying questions into the research
+    brief JSON. Always stashes the raw reply in customerNotes — that's what makes the
+    re-queued job pass the sufficiency gate and what the storyboard honors verbatim.
+    Never invents; on any failure it degrades to a notes-only merge."""
+    base = dict(brief or {})
+    prior = str(base.get("customerNotes") or "").strip()
+    base["customerNotes"] = (prior + "\n" + reply_text).strip() if prior else reply_text
+
+    key = load_env("OPENAI_API_KEY")
+    if not key:
+        return base
+    system = (
+        "You are LaunchReel's intake producer. Merge the customer's reply into the "
+        "research brief JSON so a strategist can write a truthful launch trailer. Fill "
+        "oneLiner, category, audience, keyFeatures, socialProof, tone, brandAdjectives "
+        "ONLY from what the customer actually said or what is already in the brief — "
+        "never invent metrics, customers, ratings, or claims. Keep existing non-empty "
+        "fields unless the customer corrects them. Return JSON: {\"brief\": { ... }}."
+    )
+    user = (
+        "CURRENT brief JSON:\n" + json.dumps(brief or {}, ensure_ascii=False)
+        + "\n\nCUSTOMER REPLY:\n" + reply_text.strip()
+        + "\n\nReturn the merged brief now."
+    )
+    try:
+        raw, _usage = sb_mod.call_openai(REVISE_MODEL, key, [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ])
+        folded = raw.get("brief", raw) if isinstance(raw, dict) else None
+        if isinstance(folded, dict):
+            folded["customerNotes"] = base["customerNotes"]  # never lose the raw words
+            return folded
+    except Exception as e:  # noqa: BLE001 — any failure ⇒ notes-only merge
+        log(f"fold_info LLM failed ({e}); storing raw notes only")
+    return base
+
+
+def _handle_awaiting_info(event_id: str, email, text: str, subject: str,
+                          latest: dict, send_email) -> str:
+    """The sender is answering our clarifying questions. Fold the reply into the brief
+    and re-queue; the next pass clears the sufficiency gate (customerNotes present) and
+    the storyboard honors the answer. Never counts as a revision."""
+    job_id = latest["jobId"]
+    product = latest.get("productName") or "your launch"
+    if not text:
+        if email:
+            send_email(email, "reply", {
+                "subject": f"Re: your {product} trailer",
+                "heading": "Still need a couple details \U0001F3AC",
+                "body": ("Thanks for the reply! We couldn't find any specifics in it. Send a "
+                         "sentence on what it does, who it's for, and the main benefit — or attach "
+                         "2-3 screenshots or your logo — and we'll roll camera."),
+            })
+        ack(event_id, "info_incomplete")
+        return "info_incomplete"
+
+    merged = _fold_info(latest.get("brief") or {}, text)
+    status, payload = api("/api/worker/resume-info", {"jobId": job_id, "brief": merged})
+    if status != 200 or not payload.get("ok"):
+        # Raced out of awaiting_info (another lane resumed it) — ack and move on.
+        log(f"resume-info no-op for {job_id[-6:]}: status={status} {payload}")
+        ack(event_id, "info_stale")
+        return "info_stale"
+    ack(event_id, "info_received")
+    if email:
+        send_email(email, "reply", {
+            "subject": f"Re: your {product} trailer",
+            "heading": "Got it — the crew is rolling \U0001F3AC",
+            "body": ("Perfect, that's exactly what we needed. Your trailer is back in production "
+                     "with your notes baked in — it'll land in your inbox shortly."),
+        })
+    return "info_received"
+
+
+def _handle_pre_delivery(event_id: str, email, text: str, subject: str,
+                         latest: dict, send_email) -> str:
+    """The sender is reacting to the storyline preview before delivery. Append the note
+    to brief.feedbackNotes and re-queue so the storyboard re-runs WITH it. Does NOT
+    count against the one post-delivery revision."""
+    job_id = latest["jobId"]
+    product = latest.get("productName") or "your launch"
+    if not text:
+        if email:
+            send_email(email, "reply", {
+                "subject": f"Re: your {product} trailer",
+                "heading": "Happy to tweak it — what should we change?",
+                "body": ("We got your reply but couldn't find a specific change to make. Tell us "
+                         "what to adjust — a hook, the CTA, a color — and we'll fold it into the cut."),
+            })
+        ack(event_id, "feedback_incomplete")
+        return "feedback_incomplete"
+
+    status, payload = api("/api/worker/requeue-feedback", {"jobId": job_id, "feedback": text})
+    if status != 200 or not payload.get("ok"):
+        # Raced to delivered between the inbox read and here — run the delivered path on
+        # the freshly-finished job rather than lose the customer's note.
+        if payload.get("error") == "not pre-delivery":
+            fetched = _fetch_job(job_id)
+            if fetched and fetched.get("videoUrl"):
+                log(f"{job_id[-6:]} finished rendering mid-feedback — routing to revision path")
+                return _handle_delivered(event_id, email, text, subject, fetched, send_email)
+        log(f"requeue-feedback failed for {job_id[-6:]}: status={status} {payload}")
+        _fail_reply(email, product, send_email)
+        ack(event_id, "failed")
+        return "failed"
+    ack(event_id, "feedback_queued")
+    if email:
+        send_email(email, "reply", {
+            "subject": f"Re: your {product} trailer",
+            "heading": "Got it — folding that in \U0001F3AC",
+            "body": ("Thanks! We're re-cutting your trailer with that change now. You'll get the "
+                     "updated storyline and the finished cut shortly."),
+        })
+    return "feedback_queued"
+
+
+def _handle_delivered(event_id: str, email, text: str, subject: str, job, send_email) -> str:
+    """The sender is replying after delivery — the existing one-free-revision loop."""
     # 1. No finished trailer to revise.
     if not job or not job.get("videoUrl"):
         if email:

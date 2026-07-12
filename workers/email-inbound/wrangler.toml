@@ -6,7 +6,16 @@ workers_dev = false
 # CONVEX_SITE_URL is the LaunchReel Convex HTTP host. Override per deployment.
 [vars]
 CONVEX_SITE_URL = "https://kindhearted-fish-695.convex.site"
+# Public r2.dev base for the launchreel-renders bucket (public access enabled).
+# Video attachments are uploaded here and their public URLs sent to Convex.
+R2_PUBLIC_BASE = "https://pub-2170a2cdfc494c2abdef1950108bba6c.r2.dev"
 # FORWARD_TO = "you@example.com"   # optional; must be a VERIFIED Email Routing destination
+
+# Video attachments land in the launchreel-renders bucket under inbound/<hash>/.
+# This is the SAME bucket agent/deliver.py publishes trailers to.
+[[r2_buckets]]
+binding = "RENDERS"
+bucket_name = "launchreel-renders"
 
 # EMAIL_WEBHOOK_KEY is a secret, NOT a var — set it out-of-band:
 #   npx wrangler secret put EMAIL_WEBHOOK_KEY --name launchreel-email-inbound

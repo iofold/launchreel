@@ -28,6 +28,7 @@ agent/approve.py.
 """
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -36,11 +37,24 @@ import time
 import urllib.request
 
 import feedback  # autonomous email revision loop (checked between claim polls)
+import fixpass  # rubric-driven auto-fix pass for a rig-failed render
+import profiles  # email-keyed per-customer profile (best-effort; never fails a job)
+import storyboard as sb_mod  # available_screenshots + read_json for the fix pass
+
+try:
+    import intake_gate  # thin-intake clarifying-questions gate
+    _INTAKE_GATE = True
+except Exception:  # noqa: BLE001 — a broken gate module must never take down the worker
+    intake_gate = None
+    _INTAKE_GATE = False
 
 BASE = os.environ.get("CONVEX_SITE_URL", "").rstrip("/")
 KEY = os.environ.get("WORKER_KEY", "")
 WORKER_ID = os.environ.get("WORKER_ID") or socket.gethostname()
 POLL = float(os.environ.get("POLL_SECONDS", "5"))
+# Max render attempts per claim: attempt 1, then (on a rig AUTO-FAIL) ONE
+# rubric-driven auto-fix + re-render. A second fail escalates to a human.
+MAX_RENDER_ATTEMPTS = int(os.environ.get("MAX_RENDER_ATTEMPTS", "2"))
 # How often an idle worker checks the revision inbox. Only runs when the render
 # queue is empty (between claim polls), so a revision render never overlaps a
 # pipeline render in this lane — that overlap is what OOM'd the box before.
@@ -170,6 +184,99 @@ def notify(job: dict, template: str) -> None:
     send_email(to, template, data)
 
 
+def record_profile(job: dict, status: str) -> None:
+    """Best-effort per-customer profile write, keyed by owner email. Gives a
+    returning customer continuity (brand brief, tier + job history, tone). Seeded
+    jobs have no owner email and are skipped. Never raises — a profile write must
+    never fail a render job."""
+    try:
+        email = job.get("email")
+        if not email:
+            return  # seeded/unclaimed job — no customer identity yet
+        prof = profiles.read_profile(email)
+        jid = job.get("jobId")
+        jobs = [j for j in (prof.get("jobs") or []) if j.get("jobId") != jid]
+        jobs.append({"jobId": jid, "productName": job.get("productName"),
+                     "tier": job.get("tier"), "status": status})
+        patch = {"jobs": jobs, "productName": job.get("productName"),
+                 "tier": job.get("tier"), "lastStatus": status}
+        brief = job.get("brief")
+        if isinstance(brief, dict) and brief:
+            patch["brandBrief"] = brief
+            if brief.get("brandAdjectives"):
+                patch["brandAdjectives"] = brief["brandAdjectives"]
+            if brief.get("tone"):
+                patch["tone"] = brief["tone"]
+        profiles.update_profile(email, patch)
+        log(job.get("jobId", ""), f"profile: {email} -> {status}")
+    except Exception as e:  # noqa: BLE001 — profile write is best-effort
+        log(job.get("jobId", ""), f"profile update skipped: {e}")
+
+
+def _send_need_info(job: dict, questions: list[str]) -> None:
+    """Ask the customer for the specifics a thin intake is missing (best-effort).
+    Seeded jobs have no owner email and are skipped."""
+    to = job.get("email")
+    if not to:
+        return
+    web = os.environ.get("WEB_BASE_URL", "https://launchreel.pages.dev").rstrip("/")
+    send_email(to, "need_info", {
+        "productName": job.get("productName"),
+        "questions": questions,
+        "jobId": job.get("jobId"),
+        "dashboardUrl": f"{web}/#job={job.get('jobId')}",
+    })
+
+
+def _send_preview_ready(job: dict, video_url: str | None, poster_url: str | None) -> None:
+    """The cut is rendered and at the approval gate — email the owner a preview with a
+    watch link + poster and invite a pre-delivery tweak. Best-effort; skips seeded
+    jobs (no owner) and jobs with no video URL yet."""
+    to = job.get("email")
+    if not to or not video_url:
+        return
+    web = os.environ.get("WEB_BASE_URL", "https://launchreel.pages.dev").rstrip("/")
+    try:
+        send_email(to, "preview_ready", {
+            "productName": job.get("productName"),
+            "tier": job.get("tier"),
+            "videoUrl": video_url,
+            "posterUrl": poster_url,
+            "dashboardUrl": f"{web}/#job={job.get('jobId')}",
+        })
+    except Exception as e:  # noqa: BLE001 — preview email must never fail a delivery
+        log(job.get("jobId", ""), f"preview_ready email skipped: {e}")
+
+
+def _send_storyline(job: dict, storyboard_path: str, vo_txt: str) -> None:
+    """After the storyboard is written, show the customer the cut we're about to make
+    and invite tweaks. The pipeline does NOT wait — a reply re-queues the job via
+    feedback.py. Skips seeded jobs (no owner). Best-effort; never fails a render."""
+    to = job.get("email")
+    if not to:
+        return
+    sb = _read_json(storyboard_path) or {}
+    scenes = [{"type": s.get("type"), "headline": (s.get("headline") or s.get("sub") or "")}
+              for s in (sb.get("scenes") or []) if isinstance(s, dict)]
+    vo_open = ""
+    try:
+        if os.path.exists(vo_txt):
+            with open(vo_txt, encoding="utf-8") as fh:
+                txt = fh.read().strip()
+            if txt:
+                vo_open = re.split(r"(?<=[.!?])\s+", txt)[0][:200]
+    except OSError:
+        pass
+    web = os.environ.get("WEB_BASE_URL", "https://launchreel.pages.dev").rstrip("/")
+    send_email(to, "storyline", {
+        "productName": job.get("productName"),
+        "tier": job.get("tier"),
+        "scenes": scenes,
+        "voOpening": vo_open,
+        "dashboardUrl": f"{web}/#job={job.get('jobId')}",
+    })
+
+
 def stage_research(job: dict, out_dir: str) -> None:
     """URL-first intake: run Scout on the job's url into the job bundle dir, then
     attach the brief.
@@ -208,16 +315,11 @@ def stage_research(job: dict, out_dir: str) -> None:
         log(jid, f"research: brief attach failed ({e}); continuing")
 
 
-def stage_render_and_deliver(job: dict, bundle_dir: str, storyboard_path: str) -> None:
-    """Render the deterministic trailer, run the vision rig, then deliver.
-
-    render.sh -> trailer.mp4 + poster.png. The vision rig (frame-qa.py) scores the
-    stills; an auto-fail verdict marks the job failed (re-render is manual today).
-    Otherwise deliver.py uploads to R2 and opens the approval gate."""
+def render_trailer(job: dict, bundle_dir: str, storyboard_path: str, slug: str) -> tuple[str, str]:
+    """One deterministic render. render.sh -> trailer.mp4 + poster.png. Returns
+    (mp4, poster); raises if no mp4 lands."""
     jid = job["jobId"]
-    slug = slug_for(job)
     out_dir = os.path.join(REPO, "render", "out", slug)
-
     r = run_capture(jid, "render",
                     [RENDER_SH, "--storyboard", storyboard_path, "--assets", bundle_dir,
                      "--out", out_dir, "--slug", slug], timeout=1800)
@@ -225,19 +327,18 @@ def stage_render_and_deliver(job: dict, bundle_dir: str, storyboard_path: str) -
     mp4 = summary.get("mp4") or os.path.join(out_dir, "trailer.mp4")
     poster = summary.get("poster") or os.path.join(out_dir, "poster.png")
     log(jid, f"render: {summary.get('renderSec','?')}s, {summary.get('mb','?')}MB, "
-             f"{summary.get('durationSec','?')}s trailer")
+             f"{summary.get('durationSec','?')}s trailer ({slug})")
     if not os.path.exists(mp4):
         raise RuntimeError(f"render produced no mp4 at {mp4}")
+    return mp4, poster
 
-    # Vision rig (stills gate). GEMINI_API_KEY from env / hermes .env default.
-    verdict = run_vision_rig(job, bundle_dir, storyboard_path, mp4)
-    if verdict == "fail":
-        log(jid, "vision rig AUTO-FAIL — marking job failed (re-render is manual today)")
-        set_status(jid, "failed")
-        return
-    log(jid, f"vision rig verdict: {verdict} (advisory — pass/needs_human still goes to human gate)")
 
-    # Deliver: R2 upload + status -> awaiting_approval with videoUrl/posterUrl.
+def deliver_trailer(job: dict, mp4: str, poster: str, attempts: int, fix_note: str | None) -> None:
+    """R2 upload + status -> awaiting_approval with videoUrl/posterUrl. Notes how
+    many render attempts it took (and the auto-fix, if any) in the deliver log."""
+    jid = job["jobId"]
+    prov = f"attempt {attempts}/{MAX_RENDER_ATTEMPTS}" + (f", auto-fixed: {fix_note}" if fix_note else "")
+    log(jid, f"deliver: shipping the {('auto-fixed ' if fix_note else '')}cut ({prov})")
     d = run_capture(jid, "deliver",
                     [sys.executable, DELIVER_PY, "--job-id", jid, "--mp4", mp4, "--poster", poster],
                     timeout=600)
@@ -248,7 +349,98 @@ def stage_render_and_deliver(job: dict, bundle_dir: str, storyboard_path: str) -
         # deliver.py uploads even if the status update fails — ensure the gate is reached.
         set_status(jid, "awaiting_approval",
                    **{k: delivered[k] for k in ("videoUrl", "posterUrl") if delivered.get(k)})
+    record_profile(job, "awaiting_approval")
+    # Preview email: the cut is rendered + at the approval gate. Show the customer
+    # their trailer and invite a pre-delivery tweak (the awaiting_approval status is
+    # the pre-delivery feedback path). Best-effort; skips seeded jobs.
+    _send_preview_ready(job, delivered.get("videoUrl"), delivered.get("posterUrl"))
     log(jid, "at approval gate — operator runs agent/approve.py to deliver")
+
+
+def preserve_attempt(bundle_dir: str, storyboard_path: str, scorecard_path: str, n: int) -> None:
+    """Freeze attempt-N's storyboard + scorecard next to the bundle as
+    rubric-iteration receipts (so a judge can diff attempt-1 vs attempt-2)."""
+    for src, tag in ((storyboard_path, "storyboard"), (scorecard_path, "scorecard")):
+        if os.path.exists(src):
+            dst = os.path.join(bundle_dir, f"{tag}.attempt{n}.json")
+            try:
+                shutil.copy2(src, dst)
+                log("", f"receipt saved: {os.path.basename(dst)}")
+            except OSError as e:
+                log("", f"could not save {tag} receipt: {e}")
+
+
+def run_fix_pass(job: dict, bundle_dir: str, storyboard_path: str,
+                 scorecard_path: str) -> tuple[dict | None, str]:
+    """Feed the rig scorecard + current storyboard to the LLM fix pass; return
+    (revised_storyboard, what_changed) or (None, reason). Best-effort: any error
+    returns None so the caller escalates to a human rather than shipping."""
+    jid = job["jobId"]
+    scorecard = _read_json(scorecard_path) or {}
+    original = _read_json(storyboard_path) or {}
+    if not scorecard or not original:
+        return None, "missing scorecard or storyboard for fix pass"
+    manifest = sb_mod.read_json(os.path.join(bundle_dir, "manifest.json"))
+    screenshots = sb_mod.available_screenshots(bundle_dir, manifest)
+    tier = "teaser" if job.get("tier") == "teaser" else "trailer"
+    log(jid, f"auto-fix: feeding rig evidence (failing: {fixpass.failing_dims(scorecard) or '—'}) to fix pass")
+    try:
+        revised, what, _meta = fixpass.fix_from_scorecard(
+            original, scorecard, screenshots, tier)
+    except Exception as e:  # noqa: BLE001 — fix pass is best-effort
+        return None, f"fix pass error: {e}"
+    return revised, what
+
+
+def stage_render_and_deliver(job: dict, bundle_dir: str, storyboard_path: str) -> None:
+    """Render -> vision rig -> (on AUTO-FAIL) one rubric-driven auto-fix + re-render
+    -> deliver, bounded to MAX_RENDER_ATTEMPTS renders.
+
+    Attempt 1: render + rig. A non-fail verdict (pass/needs_human) delivers as usual
+    (pass/needs_human still goes to the human approval gate downstream). A rig
+    AUTO-FAIL feeds the scorecard's per-dimension evidence + the current storyboard
+    to the LLM fix pass (fixpass.py), which makes targeted edits addressing ONLY the
+    cited defects; we re-render and re-rig. A second AUTO-FAIL (or an unfixable one)
+    marks the job failed and sends the honest `quality_hold` email — a human director
+    finishes it. Attempt-1's storyboard + scorecard are frozen in the bundle as
+    iteration receipts."""
+    jid = job["jobId"]
+    slug = slug_for(job)
+    scorecard_path = os.path.join(bundle_dir, "scorecard.json")
+
+    fix_note: str | None = None
+    for attempt in range(1, MAX_RENDER_ATTEMPTS + 1):
+        render_slug = slug if attempt == 1 else f"{slug}-fix{attempt - 1}"
+        mp4, poster = render_trailer(job, bundle_dir, storyboard_path, render_slug)
+
+        # Vision rig (stills gate) -> writes scorecard_path, returns the verdict.
+        verdict = run_vision_rig(job, bundle_dir, storyboard_path, mp4)
+        if verdict != "fail":
+            log(jid, f"vision rig verdict: {verdict} on attempt {attempt} "
+                     f"(pass/needs_human still goes to the human approval gate)")
+            deliver_trailer(job, mp4, poster, attempt, fix_note)
+            return
+
+        log(jid, f"vision rig AUTO-FAIL on attempt {attempt}/{MAX_RENDER_ATTEMPTS}")
+        if attempt >= MAX_RENDER_ATTEMPTS:
+            break  # exhausted attempts -> escalate below
+
+        # Freeze the failing attempt's receipts, then auto-fix + re-render.
+        preserve_attempt(bundle_dir, storyboard_path, scorecard_path, attempt)
+        revised, fix_note = run_fix_pass(job, bundle_dir, storyboard_path, scorecard_path)
+        if revised is None:
+            log(jid, f"auto-fix produced no valid edit ({fix_note}) — escalating to human")
+            set_status(jid, "failed")
+            notify(job, "quality_hold")
+            return
+        log(jid, f"auto-fix applied: {fix_note} — re-rendering (attempt {attempt + 1})")
+        with open(storyboard_path, "w", encoding="utf-8") as fh:
+            json.dump(revised, fh, indent=2)
+
+    # Fell out of the loop on a final AUTO-FAIL: quality gate holds the cut.
+    log(jid, "quality gate held the cut after auto-fix — marking failed + notifying (human polish)")
+    set_status(jid, "failed")
+    notify(job, "quality_hold")
 
 
 def run_vision_rig(job: dict, bundle_dir: str, storyboard_path: str, mp4: str) -> str:
@@ -322,8 +514,14 @@ def process(job: dict) -> None:
     log(jid, f"claimed: {job['productName']} ({job['tier']})")
 
     # Order-confirmation email — email is the primary channel. Best-effort; seeded
-    # jobs have no owner email and are skipped inside notify().
-    notify(job, "order_confirmation")
+    # jobs have no owner email and are skipped inside notify(). Skip it on a re-queued
+    # job (awaiting_info resume / pre-delivery feedback): it already got one, and
+    # feedback.py sent a tailored "crew is rolling"/"folding that in" reply.
+    brief0 = job.get("brief")
+    is_requeue = isinstance(brief0, dict) and bool(brief0.get("customerNotes") or brief0.get("feedbackNotes"))
+    if not is_requeue:
+        notify(job, "order_confirmation")
+    record_profile(job, job.get("status") or "claimed")
 
     bundle_dir = os.path.join(REPO, ".tmp", "scout", jid)
     os.makedirs(bundle_dir, exist_ok=True)
@@ -334,6 +532,29 @@ def process(job: dict) -> None:
     # research (claim already set it) — Scout: Linkup fetch/search + screenshots
     stage_research(job, bundle_dir)
 
+    # Thin-intake gate: if research gave us too little to make a truthful trailer AND
+    # this job has an owner we can ask, park it at awaiting_info with 2-4 specific
+    # questions instead of rendering something hollow. Seeded jobs (no email) always
+    # render best-effort. Guarded: any gate error falls through to storyboard as today.
+    if _INTAKE_GATE and job.get("email"):
+        try:
+            intake_gate.apply_carryover_notes(job, bundle_dir)  # re-thread a resumed reply
+            decision = intake_gate.assess(bundle_dir, job)
+        except Exception as e:  # noqa: BLE001 — never let the gate fail a job
+            log(jid, f"intake gate error ({e}); proceeding to storyboard")
+            decision = {"sufficient": True}
+        if not decision.get("sufficient", True):
+            log(jid, f"intake insufficient ({'; '.join(decision.get('reasons') or [])}) -> awaiting_info")
+            try:
+                questions = intake_gate.draft_questions(job, bundle_dir, decision)
+            except Exception as e:  # noqa: BLE001
+                log(jid, f"draft_questions error ({e}); using fallback")
+                questions = intake_gate.fallback_questions(job.get("productName") or "your product")
+            _send_need_info(job, questions)
+            set_status(jid, "awaiting_info")
+            record_profile(job, "awaiting_info")
+            return  # lane is never blocked — the customer's reply re-queues the job
+
     # storyboard — brief + scout bundle -> storyboard.json (validated) + vo.txt
     set_status(jid, "storyboard")
     run_capture(jid, "storyboard", [
@@ -343,6 +564,15 @@ def process(job: dict) -> None:
         "--out", storyboard_path, "--vo-out", vo_txt,
         "--meta-out", os.path.join(bundle_dir, "storyboard.meta.json"),
     ], timeout=300)
+
+    # Storyline preview — email the customer the cut we're about to make and invite
+    # tweaks. The pipeline does NOT wait; a reply re-queues the job (feedback.py).
+    # Best-effort; skips seeded jobs.
+    if job.get("email"):
+        try:
+            _send_storyline(job, storyboard_path, vo_txt)
+        except Exception as e:  # noqa: BLE001 — storyline email must never fail a render
+            log(jid, f"storyline email skipped: {e}")
 
     # voiceover — vo.txt -> vo.mp3 (ElevenLabs, OpenAI fallback); wires audio.voPath.
     # Best-effort: a VO failure logs and continues (trailer renders without narration).

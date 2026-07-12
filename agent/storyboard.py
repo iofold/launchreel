@@ -147,7 +147,11 @@ def build_messages(ctx: dict) -> list[dict]:
         "SaaS launch trailer as a single JSON object — never any render code. The "
         "renderer is deterministic Remotion; your JSON is its only input. Be "
         "punchy, concrete, and brand-accurate. No hype cliches, no lorem, no "
-        "invented metrics — only use numbers/customers that appear in the brief."
+        "invented metrics — only use numbers/customers that appear in the brief. "
+        "When the brief is thin, prefer honest minimalism over invented specifics: "
+        "never fabricate metrics, customers, ratings, funding, or testimonials that "
+        "are not in the brief — it is better to omit a metric or quote than to make "
+        "one up. Lead with the real value proposition and concrete capability instead."
     )
     schema_rules = f"""Return ONE JSON object with EXACTLY these top-level keys:
 {{
@@ -190,8 +194,27 @@ Rules:
         "brief": brief,
     }, ensure_ascii=False, indent=2)
 
+    # Customer's own words carry the most weight: a resume answer (customerNotes) or
+    # a pre-delivery tweak (feedbackNotes) folded in by the email loop. Honor these
+    # above the scraped page copy — they are ground truth from the customer.
+    notes_lines: list[str] = []
+    cust = brief.get("customerNotes") if isinstance(brief, dict) else None
+    if isinstance(cust, str) and cust.strip():
+        notes_lines.append(
+            "The customer told us this DIRECTLY — honor it above any scraped copy, and "
+            "build the trailer's value proposition from it:\n" + cust.strip())
+    fb = brief.get("feedbackNotes") if isinstance(brief, dict) else None
+    if fb:
+        fb_text = "; ".join(str(x).strip() for x in fb if str(x).strip()) if isinstance(fb, list) else str(fb).strip()
+        if fb_text:
+            notes_lines.append(
+                "The customer reviewed a draft and asked for these changes — APPLY them "
+                "faithfully in this cut:\n" + fb_text)
+    notes_block = ("CUSTOMER NOTES (highest priority):\n" + "\n\n".join(notes_lines) + "\n\n") if notes_lines else ""
+
     user = (
         f"Product context:\n{brief_block}\n\n"
+        + notes_block
         + (f"Source page copy (for tone/wording, excerpt):\n{page_excerpt}\n\n" if page_excerpt else "")
         + schema_rules
     )
@@ -404,15 +427,19 @@ def deterministic_scenes(ctx: dict) -> list[dict]:
         {"type": "tour_a", "durationSec": 6, "headline": clamp_words(feats[0], hi=6) if feats else "See it in action.",
          "sub": "Built for speed",
          **({"screenshotPaths": [shots[0]]} if shots else {}),
-         "metrics": [metric_from(f) for f in feats[:3]] or [{"label": "features", "value": "All-in-one"}]},
+         # Metrics only when the brief actually gives us features to draw from — never
+         # a fabricated stat when there's nothing real to show.
+         "metrics": [metric_from(f) for f in feats[:3]]},
         {"type": "tour_b", "durationSec": 6, "headline": clamp_words(feats[1], hi=6) if len(feats) > 1 else "Everything connected.",
          "sub": "One workflow",
          **({"screenshotPaths": [shots[1] if len(shots) > 1 else shots[0]]} if shots else {}),
-         "metrics": [metric_from(proof[0]) if proof else {"label": "teams", "value": "1,000+"}]},
-        {"type": "social_proof", "durationSec": 5, "headline": "Loved by great teams.",
-         "metrics": [metric_from(p) for p in proof[:2]] or [{"label": "rating", "value": "4.9"}],
+         "metrics": [metric_from(proof[0])] if proof else []},
+        {"type": "social_proof", "durationSec": 5,
+         "headline": "Loved by great teams." if proof else clamp_words(one, hi=6) or f"Meet {name}.",
+         # No invented rating/traction: show real proof metrics or none at all.
+         "metrics": [metric_from(p) for p in proof[:2]],
          "quote": {"text": truncate_words(proof[0] if proof else one, 150),
-                   "author": f"Used by {name}" if not proof else "Trusted by teams"}},
+                   "author": "Trusted by teams" if proof else ""}},
         {"type": "cta", "durationSec": 3, "headline": clamp_words(one, hi=6) or f"Try {name}.",
          "sub": "Get started →"},
     ]

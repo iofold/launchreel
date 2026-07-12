@@ -267,6 +267,336 @@ function revisionReady(d: Data): Rendered {
   return { subject, html: shell(`Your ${product} trailer — new cut`, body), text };
 }
 
+// Quality gate held the cut: the vision rig auto-failed BOTH the first render and
+// the auto-fix re-render, so we escalate to a human director instead of shipping a
+// visibly broken trailer. Honest, no fake ETA (see eval/rubric.md auto-fail rule).
+function qualityHold(d: Data): Rendered {
+  const product = d.productName || "your launch";
+  const dash = d.dashboardUrl || d.statusUrl || "";
+  const subject = `🎬 A quick hold on your ${product} trailer`;
+
+  const body = `
+    <h1 style="margin:0 0 8px;font:800 24px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      We're polishing your cut. 🎬</h1>
+    <p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      Quick, honest update on <b>${esc(product)}</b>: our automated quality gate flagged
+      the first cut, and the auto-fix pass didn't clear our bar either — so rather than
+      send you something we're not proud of, a human director on the LaunchReel team is
+      taking it the rest of the way.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+      style="margin:6px 0 4px;background:${BRAND.bg};border:1px solid ${BRAND.border};border-radius:12px;">
+      <tr><td style="padding:14px 16px;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+        <b style="color:${BRAND.ink};">Why the hold</b><br>
+        We render every trailer through a vision quality gate that checks text legibility,
+        real-product truthfulness, and brand fidelity frame by frame. This one didn't pass
+        cleanly, so we won't auto-ship it. No action needed from you.
+      </td></tr>
+    </table>
+    ${dash ? button(dash, "Track your trailer →") : ""}
+    <p style="margin:16px 0 0;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+      We'll follow up personally the moment it's ready. Thanks for your patience.</p>
+  `;
+
+  const text = [
+    `We're polishing your cut.`,
+    ``,
+    `Quick, honest update on ${product}: our automated quality gate flagged the first`,
+    `cut, and the auto-fix pass didn't clear our bar either. Rather than send something`,
+    `we're not proud of, a human director on the LaunchReel team is taking it the rest`,
+    `of the way. No action needed from you.`,
+    ``,
+    `Why the hold: every trailer runs through a vision quality gate (text legibility,`,
+    `real-product truthfulness, brand fidelity). This one didn't pass cleanly, so we`,
+    `won't auto-ship it.`,
+    dash ? `\nTrack your trailer: ${dash}` : "",
+    ``,
+    `We'll follow up personally the moment it's ready. — LaunchReel`,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  return { subject, html: shell(`A quick hold on your ${product} trailer`, body), text };
+}
+
+// Two-video comparison: a client emailed us two trailers; the agent scored BOTH on
+// the LaunchReel rubric and this ships the per-criterion breakdown + overall winner.
+// Data: { labelA, labelB, winner ("A"|"B"|"tie"), scoreA, scoreB, summary,
+//         perDimension:[{dimension,a,b,winner,why}], brandNote? }.
+function videoCompare(d: Data): Rendered {
+  const labelA = d.labelA || "Video A";
+  const labelB = d.labelB || "Video B";
+  const winner = String(d.winner || "tie").toUpperCase();
+  const scoreA = d.scoreA != null ? Number(d.scoreA).toFixed(2) : "—";
+  const scoreB = d.scoreB != null ? Number(d.scoreB).toFixed(2) : "—";
+  const summary = d.summary || "We scored both trailers against the LaunchReel rubric.";
+  const rows: Data[] = Array.isArray(d.perDimension) ? d.perDimension : [];
+  const winnerLabel = winner === "A" ? labelA : winner === "B" ? labelB : "It's a tie";
+  const subject = `🎬 Trailer face-off: ${labelA} vs ${labelB}`;
+
+  const prettyDim = (s: string) =>
+    String(s || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const cell = (v: any) => (v == null || v === "" ? "—" : esc(v));
+
+  const headRow = `
+    <tr style="background:${BRAND.bg};">
+      <th align="left" style="padding:9px 12px;font:700 12px/1.3 Verdana,sans-serif;color:${BRAND.ink};border-bottom:1px solid ${BRAND.border};">Criterion</th>
+      <th align="center" style="padding:9px 8px;font:700 12px/1.3 Verdana,sans-serif;color:${BRAND.ink};border-bottom:1px solid ${BRAND.border};">${esc(labelA)}</th>
+      <th align="center" style="padding:9px 8px;font:700 12px/1.3 Verdana,sans-serif;color:${BRAND.ink};border-bottom:1px solid ${BRAND.border};">${esc(labelB)}</th>
+      <th align="left" style="padding:9px 12px;font:700 12px/1.3 Verdana,sans-serif;color:${BRAND.ink};border-bottom:1px solid ${BRAND.border};">Edge</th>
+    </tr>`;
+  const bodyRows = rows
+    .map((r) => {
+      const w = String(r.winner || "").toUpperCase();
+      const edge = w === "A" ? esc(labelA) : w === "B" ? esc(labelB) : "Tie";
+      return `<tr>
+        <td style="padding:9px 12px;font:600 12px/1.4 Verdana,sans-serif;color:${BRAND.ink};border-bottom:1px solid ${BRAND.border};">${prettyDim(r.dimension)}</td>
+        <td align="center" style="padding:9px 8px;font:400 12px/1.4 Verdana,sans-serif;color:${BRAND.ink};border-bottom:1px solid ${BRAND.border};">${cell(r.a)}</td>
+        <td align="center" style="padding:9px 8px;font:400 12px/1.4 Verdana,sans-serif;color:${BRAND.ink};border-bottom:1px solid ${BRAND.border};">${cell(r.b)}</td>
+        <td style="padding:9px 12px;font:400 12px/1.4 Verdana,sans-serif;color:${BRAND.muted};border-bottom:1px solid ${BRAND.border};">${cell(r.why || edge)}</td>
+      </tr>`;
+    })
+    .join("\n");
+
+  const body = `
+    <h1 style="margin:0 0 8px;font:800 24px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      The verdict is in. 🏆</h1>
+    <p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      We ran both trailers through the LaunchReel quality rubric. <b style="color:${BRAND.accent};">
+      Winner: ${esc(winnerLabel)}</b> (${esc(labelA)} ${scoreA} vs ${esc(labelB)} ${scoreB}, mean of scored dimensions).</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+      style="margin:6px 0 10px;border:1px solid ${BRAND.border};border-radius:12px;border-collapse:separate;overflow:hidden;">
+      ${headRow}
+      ${bodyRows}
+    </table>
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+      style="margin:6px 0 4px;background:${BRAND.bg};border:1px solid ${BRAND.border};border-radius:12px;">
+      <tr><td style="padding:14px 16px;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+        <b style="color:${BRAND.ink};">Summary</b><br>${esc(summary)}
+      </td></tr>
+    </table>
+    ${d.brandNote ? `<p style="margin:14px 0 0;font:400 12px/1.5 Verdana,sans-serif;color:${BRAND.muted};">${esc(d.brandNote)}</p>` : ""}
+    <p style="margin:14px 0 0;font:400 12px/1.5 Verdana,sans-serif;color:${BRAND.muted};">
+      Scored 1-5 per criterion by the same vision rig that gates every LaunchReel delivery.</p>
+  `;
+
+  const textRows = rows
+    .map((r) => {
+      const w = String(r.winner || "").toUpperCase();
+      const edge = w === "A" ? labelA : w === "B" ? labelB : "Tie";
+      return `  - ${prettyDim(r.dimension)}: ${labelA}=${r.a ?? "—"}  ${labelB}=${r.b ?? "—"}  edge: ${edge}${r.why ? ` (${r.why})` : ""}`;
+    })
+    .join("\n");
+  const text = [
+    `The verdict is in.`,
+    ``,
+    `Winner: ${winnerLabel}  (${labelA} ${scoreA} vs ${labelB} ${scoreB})`,
+    ``,
+    `Per-criterion:`,
+    textRows,
+    ``,
+    `Summary: ${summary}`,
+    d.brandNote ? `\n${d.brandNote}` : "",
+    ``,
+    `Scored 1-5 per criterion by the LaunchReel vision rig. — LaunchReel`,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  return { subject, html: shell(`Trailer face-off: ${labelA} vs ${labelB}`, body), text };
+}
+
+// Intake gate: the site gave the pipeline too little to make a truthful trailer,
+// so we ask the customer 2-4 specific questions before storyboarding. Data:
+// { productName, questions: string[], dashboardUrl?, jobId? }.
+function needInfo(d: Data): Rendered {
+  const product = d.productName || "your launch";
+  const dash = d.dashboardUrl || d.statusUrl || "";
+  const questions: string[] = Array.isArray(d.questions)
+    ? d.questions.map((q) => String(q ?? "").trim()).filter(Boolean).slice(0, 4)
+    : [];
+  const subject = "Quick questions before we roll camera 🎬";
+
+  const qList = questions.length
+    ? `<ul style="margin:8px 0 6px;padding:0 0 0 20px;">${questions
+        .map(
+          (q) =>
+            `<li style="margin:0 0 10px;font:400 15px/1.6 Verdana,sans-serif;color:${BRAND.ink};">${esc(
+              q
+            )}</li>`
+        )
+        .join("")}</ul>`
+    : "";
+
+  const body = `
+    <h1 style="margin:0 0 8px;font:800 24px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      Two quick things and we're rolling.</h1>
+    <p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      We started on your <b>${esc(product)}</b> trailer — but your site didn't give our
+      agents quite enough to make something you'll be proud to launch with. A couple of
+      quick answers and we'll cut it right away:</p>
+    ${qList}
+    <p style="margin:14px 0 0;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      Just hit <b>reply</b> — a sentence each is plenty. You can also paste 2-3 product
+      screenshots or your logo and we'll use them.</p>
+    ${dash ? button(dash, "See your order →") : ""}
+    ${d.jobId ? `<p style="margin:14px 0 0;font:400 11px/1.5 Verdana,sans-serif;color:${BRAND.muted};">
+      Order ref: ${esc(d.jobId)}</p>` : ""}
+  `;
+
+  const text = [
+    `Two quick things and we're rolling.`,
+    ``,
+    `We started on your ${product} trailer, but your site didn't give our agents`,
+    `quite enough to make something you'll be proud to launch with. A couple of quick`,
+    `answers and we'll cut it right away:`,
+    ``,
+    ...questions.map((q, i) => `${i + 1}. ${q}`),
+    ``,
+    `Just reply — a sentence each is plenty. You can also attach 2-3 product`,
+    `screenshots or your logo and we'll use them.`,
+    dash ? `\nSee your order: ${dash}` : "",
+    d.jobId ? `\nOrder ref: ${d.jobId}` : "",
+    ``,
+    `— LaunchReel`,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  return { subject, html: shell(`A couple of quick questions about ${product}`, body), text };
+}
+
+// Pre-delivery storyline preview: after the storyboard is written (before render
+// finishes) we show the customer the cut we're about to make and invite tweaks.
+// Data: { productName, tier?, scenes: {type,headline}[], voOpening?, dashboardUrl? }.
+function storyline(d: Data): Rendered {
+  const product = d.productName || "your launch";
+  const dash = d.dashboardUrl || d.statusUrl || "";
+  const voOpening = String(d.voOpening ?? "").trim();
+  const scenes: Array<{ type?: string; headline?: string }> = Array.isArray(d.scenes)
+    ? d.scenes
+    : [];
+  const subject = `🎬 Your ${product} storyline — a look before we render`;
+
+  const SCENE_LABEL: Record<string, string> = {
+    hook: "Hook",
+    problem: "Problem",
+    tour_a: "Product tour",
+    tour_b: "Product tour",
+    social_proof: "Social proof",
+    cta: "Call to action",
+  };
+
+  const rows = scenes
+    .map((s, i) => {
+      const label = SCENE_LABEL[String(s?.type)] || String(s?.type || `Scene ${i + 1}`);
+      const line = String(s?.headline ?? "").trim();
+      if (!line) return "";
+      return `<tr>
+        <td style="padding:8px 10px 8px 0;vertical-align:top;font:700 12px/1.5 Verdana,sans-serif;color:${BRAND.accent};white-space:nowrap;">${esc(
+          label
+        )}</td>
+        <td style="padding:8px 0;vertical-align:top;font:400 14px/1.5 Verdana,sans-serif;color:${BRAND.ink};">${esc(
+          line
+        )}</td>
+      </tr>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  const scenesBlock = rows
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+        style="margin:8px 0 6px;background:${BRAND.bg};border:1px solid ${BRAND.border};border-radius:12px;">
+        <tr><td style="padding:12px 16px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">${rows}</table>
+        </td></tr></table>`
+    : "";
+
+  const voBlock = voOpening
+    ? `<p style="margin:12px 0 0;font:400 14px/1.7 Verdana,sans-serif;color:${BRAND.muted};">
+        <b style="color:${BRAND.ink};">Opening voiceover:</b> "${esc(voOpening)}"</p>`
+    : "";
+
+  const body = `
+    <h1 style="margin:0 0 8px;font:800 24px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      Here's the cut we're about to make.</h1>
+    <p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      Your <b>${esc(product)}</b> trailer just got its storyboard. Six scenes, thirty
+      seconds — here's the beat sheet:</p>
+    ${scenesBlock}
+    ${voBlock}
+    <p style="margin:16px 0 0;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      <b>Reply with any tweaks</b> — a different hook, a sharper CTA, a color — and we'll
+      fold them in. Otherwise this is rendering right now and lands in your inbox shortly.</p>
+    ${dash ? button(dash, "Watch it build live →") : ""}
+  `;
+
+  const text = [
+    `Here's the cut we're about to make.`,
+    ``,
+    `Your ${product} trailer just got its storyboard. Six scenes, thirty seconds:`,
+    ``,
+    ...scenes
+      .map((s, i) => {
+        const label = SCENE_LABEL[String(s?.type)] || String(s?.type || `Scene ${i + 1}`);
+        const line = String(s?.headline ?? "").trim();
+        return line ? `${i + 1}. ${label}: ${line}` : "";
+      })
+      .filter(Boolean),
+    voOpening ? `\nOpening voiceover: "${voOpening}"` : "",
+    ``,
+    `Reply with any tweaks — a different hook, a sharper CTA, a color — and we'll fold`,
+    `them in. Otherwise this is rendering right now and lands in your inbox shortly.`,
+    dash ? `\nWatch it build live: ${dash}` : "",
+    ``,
+    `— LaunchReel`,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  return { subject, html: shell(`Your ${product} storyline`, body), text };
+}
+
+// Approval-gate preview: the cut is rendered and at awaiting_approval (final QA).
+// Shows the customer their trailer with the poster + watch link, and invites a
+// pre-delivery tweak (which the stage-aware feedback loop folds in before ship).
+// Data: { productName, videoUrl, posterUrl?, dashboardUrl?, tier? }.
+function previewReady(d: Data): Rendered {
+  const product = d.productName || "your launch";
+  const video = d.videoUrl || "";
+  const dash = d.dashboardUrl || d.statusUrl || "";
+  const poster = d.posterUrl || "";
+  const subject = `🎬 Your ${product} cut is ready`;
+
+  const posterBlock = poster
+    ? `<a href="${esc(video || dash)}" style="text-decoration:none;">
+         <img src="${esc(poster)}" alt="${esc(product)} trailer" width="500"
+           style="width:100%;max-width:500px;border-radius:12px;border:1px solid ${BRAND.border};display:block;margin:4px 0 2px;"></a>`
+    : "";
+
+  const body = `
+    <h1 style="margin:0 0 8px;font:800 24px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      Your cut is ready. 🎬</h1>
+    <p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      Here's your <b>${esc(product)}</b> launch trailer, fresh off the render. Take a look —
+      we're doing a quick final QA pass and it ships to you shortly.</p>
+    ${posterBlock}
+    ${video ? button(video, "▶ Watch your trailer") : (dash ? button(dash, "▶ Open your trailer") : "")}
+    <p style="margin:18px 0 0;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+      Want a change before it goes out? <b>Reply to this email</b> with any tweak — a hook,
+      the CTA, a color — and we'll fold it into the cut.</p>
+    ${dash ? `<p style="margin:12px 0 0;font:400 12px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+      Track it live: <a href="${esc(dash)}" style="color:${BRAND.accent};">${esc(dash)}</a></p>` : ""}
+  `;
+
+  const text = [
+    `Your cut is ready.`,
+    ``,
+    `Here's your ${product} launch trailer, fresh off the render. We're doing a quick`,
+    `final QA pass and it ships to you shortly.`,
+    video ? `\nWatch it: ${video}` : (dash ? `\nOpen it: ${dash}` : ""),
+    ``,
+    `Want a change before it goes out? Reply to this email with any tweak — a hook,`,
+    `the CTA, a color — and we'll fold it into the cut.`,
+    dash ? `\nTrack it live: ${dash}` : "",
+    ``,
+    `— LaunchReel`,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  return { subject, html: shell(`Your ${product} cut is ready`, body), text };
+}
+
 // Generic branded reply — used for the feedback-loop edge cases (no matching
 // order, or an escalation to a human). Caller supplies subject/heading/body.
 function reply(d: Data): Rendered {
@@ -300,6 +630,11 @@ const TEMPLATES: Record<string, (d: Data) => Rendered> = {
   order_confirmation: orderConfirmation,
   delivered,
   revision_ready: revisionReady,
+  quality_hold: qualityHold,
+  video_compare: videoCompare,
+  need_info: needInfo,
+  storyline,
+  preview_ready: previewReady,
   reply,
 };
 

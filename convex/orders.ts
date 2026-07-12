@@ -127,6 +127,7 @@ export const updateStatus = mutation({
     status: v.union(
       v.literal("queued"),
       v.literal("research"),
+      v.literal("awaiting_info"),
       v.literal("storyboard"),
       v.literal("voiceover"),
       v.literal("rendering"),
@@ -216,6 +217,9 @@ export const claimNext = mutation({
       url: job.url,
       source: job.source,
       assetRefs: job.assetRefs,
+      // Carried so a re-queued job (awaiting_info resume / pre-delivery feedback) keeps
+      // its customerNotes/feedbackNotes even when a fresh box re-runs Scout over them.
+      brief: job.brief ?? null,
     };
   },
 });
@@ -363,8 +367,11 @@ export const emailInbound = mutation({
     from: v.string(),
     subject: v.optional(v.string()),
     text: v.optional(v.string()),
+    // Public R2 URLs of video attachments the inbound Email Worker uploaded
+    // (used by the two-video comparison flow). Additive/optional.
+    attachmentUrls: v.optional(v.array(v.string())),
   },
-  handler: async (ctx, { from, subject, text }) => {
+  handler: async (ctx, { from, subject, text, attachmentUrls }) => {
     const now = Date.now();
     const email = from.trim().toLowerCase();
 
@@ -391,11 +398,63 @@ export const emailInbound = mutation({
       meta: {
         subject: (subject ?? "").slice(0, 200),
         text: (text ?? "").slice(0, 2000),
+        // Carry attachment URLs so the compare agent can score them. Kept only
+        // when present so existing events are unaffected.
+        ...(attachmentUrls && attachmentUrls.length
+          ? { attachmentUrls: attachmentUrls.slice(0, 6).map((u) => String(u).slice(0, 500)) }
+          : {}),
       },
       createdAt: now,
     });
 
     return { ok: true, userId: user._id, isNewUser };
+  },
+});
+
+// ---- Style Lab feedback (public artifact) ---------------------------------
+// The LaunchReel Style Lab artifact (artifacts.iofold.com/.../launchreel-style-lab)
+// lets a delivered customer react to six candidate trailer styles. Additive and
+// public: one "style_feedback" event per submit, last-write-informal (multiple
+// submits from one person are fine). No user is created — if the email matches a
+// known user we link it, otherwise the event stands on its own.
+// meta: { email?, ratings: { <styleId>: { rating, why?, wouldUse? } }, topPick?, source }
+export const logStyleFeedback = mutation({
+  args: {
+    email: v.optional(v.string()),
+    ratings: v.optional(v.any()),
+    topPick: v.optional(v.string()),
+    source: v.optional(v.string()),
+  },
+  handler: async (ctx, { email, ratings, topPick, source }) => {
+    const now = Date.now();
+    const cleanEmail =
+      email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())
+        ? email.trim().toLowerCase().slice(0, 200)
+        : undefined;
+
+    // Best-effort link to a known user; never create one from this surface.
+    let userId = undefined;
+    if (cleanEmail) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", cleanEmail))
+        .first();
+      userId = user?._id;
+    }
+
+    await ctx.db.insert("events", {
+      type: "style_feedback",
+      userId,
+      meta: {
+        ...(cleanEmail ? { email: cleanEmail } : {}),
+        ratings: ratings ?? {},
+        ...(topPick ? { topPick: String(topPick).slice(0, 40) } : {}),
+        source: source ? String(source).slice(0, 40) : "style_lab",
+      },
+      createdAt: now,
+    });
+
+    return { ok: true };
   },
 });
 
@@ -423,12 +482,14 @@ export const unprocessedInbound = query({
     for (const e of pending) {
       const user = e.userId ? await ctx.db.get(e.userId) : null;
       let job = null;
+      let latestJob = null;
       if (user) {
         const jobs = await ctx.db
           .query("jobs")
           .withIndex("by_user", (q) => q.eq("userId", user._id))
           .collect();
-        // Latest job that actually has a video to revise (newest by updatedAt).
+        // `job`: latest job that actually has a video to revise (the delivered-revision
+        // target — kept exactly as before so an un-restarted worker behaves the same).
         const withVideo = jobs
           .filter((j) => !!j.videoUrl)
           .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -446,14 +507,34 @@ export const unprocessedInbound = query({
             revisionCount: j.revisionCount ?? 0,
           };
         }
+        // `latestJob`: the sender's newest job of ANY status — powers stage-aware
+        // routing (awaiting_info reply / pre-delivery storyline tweak). Additive;
+        // includes the stored brief so feedback.py can fold a reply into it.
+        const newest = [...jobs].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (newest) {
+          latestJob = {
+            jobId: newest._id,
+            tier: newest.tier,
+            productName: newest.productName,
+            oneLiner: newest.oneLiner,
+            url: newest.url ?? null,
+            status: newest.status,
+            videoUrl: newest.videoUrl ?? null,
+            posterUrl: newest.posterUrl ?? null,
+            revisionCount: newest.revisionCount ?? 0,
+            brief: newest.brief ?? null,
+          };
+        }
       }
       out.push({
         eventId: e._id,
         email: user?.email ?? null,
         subject: (e.meta as any)?.subject ?? "",
         text: (e.meta as any)?.text ?? "",
+        attachmentUrls: (e.meta as any)?.attachmentUrls ?? [],
         createdAt: e.createdAt,
         job,
+        latestJob,
       });
     }
     return out;
@@ -513,6 +594,78 @@ export const applyRevision = mutation({
   },
 });
 
+// Resume a job that was parked at awaiting_info: the customer answered our
+// clarifying questions, feedback.py folded the reply into the brief, and now the
+// job re-enters the queue. Guarded to awaiting_info so a duplicate/raced inbound
+// can't bounce a job that already moved on. NOT a revision (revisionCount untouched).
+export const resumeFromInfo = mutation({
+  args: { jobId: v.id("jobs"), brief: v.any() },
+  handler: async (ctx, { jobId, brief }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return { ok: false, error: "job not found" };
+    if (job.status !== "awaiting_info")
+      return { ok: false, error: "not awaiting_info", status: job.status };
+    const patch: Record<string, unknown> = {
+      brief,
+      status: "queued",
+      updatedAt: Date.now(),
+    };
+    // Backfill name/one-liner from the folded brief if the order never had them
+    // (same rule as attachBrief) so the dashboard/TV show the real product.
+    if (!job.oneLiner) {
+      if (typeof brief?.productName === "string" && brief.productName.trim())
+        patch.productName = String(brief.productName).slice(0, 100);
+      if (typeof brief?.oneLiner === "string" && brief.oneLiner.trim())
+        patch.oneLiner = String(brief.oneLiner).slice(0, 200);
+    }
+    await ctx.db.patch(jobId, patch);
+    await ctx.db.insert("events", {
+      type: "info_received",
+      ...(job.userId ? { userId: job.userId } : {}),
+      jobId,
+      createdAt: Date.now(),
+    });
+    return { ok: true };
+  },
+});
+
+// Pre-delivery feedback: the customer reacted to the storyline preview before the
+// trailer was delivered. Append their note to brief.feedbackNotes and re-queue so
+// the next pass re-runs the storyboard WITH the note. Guarded to the pre-delivery
+// statuses; does NOT bump revisionCount (only post-delivery recuts count as the one
+// free revision). Idempotent-ish: a job already back in queued/research is left alone.
+export const requeueForFeedback = mutation({
+  args: { jobId: v.id("jobs"), feedback: v.string() },
+  handler: async (ctx, { jobId, feedback }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return { ok: false, error: "job not found" };
+    const preDelivery = ["storyboard", "voiceover", "rendering", "awaiting_approval"];
+    if (!preDelivery.includes(job.status))
+      return { ok: false, error: "not pre-delivery", status: job.status };
+    const note = String(feedback).slice(0, 2000).trim();
+    const prevBrief = (job.brief as any) ?? {};
+    const prevNotes: string[] = Array.isArray(prevBrief.feedbackNotes)
+      ? prevBrief.feedbackNotes
+      : prevBrief.feedbackNotes
+        ? [String(prevBrief.feedbackNotes)]
+        : [];
+    const feedbackNotes = note ? [...prevNotes, note].slice(-8) : prevNotes;
+    await ctx.db.patch(jobId, {
+      brief: { ...prevBrief, feedbackNotes },
+      status: "queued",
+      updatedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      type: "feedback_requeued",
+      ...(job.userId ? { userId: job.userId } : {}),
+      jobId,
+      meta: { note: note.slice(0, 200) },
+      createdAt: Date.now(),
+    });
+    return { ok: true };
+  },
+});
+
 // Public job status for the live dashboard (jobId is unguessable).
 export const jobStatus = query({
   args: { jobId: v.id("jobs") },
@@ -551,6 +704,7 @@ export const jobForWorker = query({
       url: j.url ?? null,
       videoUrl: j.videoUrl ?? null,
       posterUrl: j.posterUrl ?? null,
+      revisionCount: j.revisionCount ?? 0,
       updatedAt: j.updatedAt,
     };
   },

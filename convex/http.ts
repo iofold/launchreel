@@ -96,6 +96,54 @@ http.route({
   }),
 });
 
+// Style Lab feedback: public (like /api/tv), CORS-open. Powers the six-style
+// taste-collection artifact sent to delivered customers. Additive, no auth.
+http.route({ path: "/api/style-feedback", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/style-feedback",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    const { email, ratings, topPick, source } = body ?? {};
+    // Sanitize to the six known styles + bounded fields so the event stays clean
+    // and this open endpoint can't be used to stash arbitrary payloads.
+    const STYLES = [
+      "01-channel-zap",
+      "02-exploded-ui",
+      "03-the-crew",
+      "04-midnight-launch",
+      "05-premium-film",
+      "06-speedrun-receipt",
+    ];
+    const RATINGS = ["love", "like", "meh"];
+    const clean: Record<string, any> = {};
+    if (ratings && typeof ratings === "object") {
+      for (const k of STYLES) {
+        const r = (ratings as any)[k];
+        if (!r || typeof r !== "object") continue;
+        const entry: any = {};
+        if (RATINGS.includes(r.rating)) entry.rating = r.rating;
+        if (typeof r.why === "string" && r.why.trim()) entry.why = String(r.why).slice(0, 500);
+        if (typeof r.wouldUse === "boolean") entry.wouldUse = r.wouldUse;
+        if (Object.keys(entry).length) clean[k] = entry;
+      }
+    }
+    const cleanTopPick = STYLES.includes(topPick) ? topPick : undefined;
+    const result = await ctx.runMutation(api.orders.logStyleFeedback, {
+      email: typeof email === "string" ? email.slice(0, 200) : undefined,
+      ratings: clean,
+      topPick: cleanTopPick,
+      source: typeof source === "string" ? source.slice(0, 40) : "style_lab",
+    });
+    return json(result);
+  }),
+});
+
 http.route({ path: "/api/signup", method: "OPTIONS", handler: preflight });
 http.route({
   path: "/api/signup",
@@ -177,6 +225,7 @@ http.route({
     const { jobId, status, videoUrl, posterUrl } = body ?? {};
     const allowed = [
       "research",
+      "awaiting_info",
       "storyboard",
       "voiceover",
       "rendering",
@@ -246,13 +295,21 @@ http.route({
     } catch {
       return json({ error: "invalid JSON" }, 400);
     }
-    const { from, subject, text } = body ?? {};
+    const { from, subject, text, attachmentUrls } = body ?? {};
     if (!from || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(from))
       return json({ error: "valid from required" }, 400);
+    // Accept only well-formed http(s) attachment URLs (additive/optional).
+    const cleanAttachments = Array.isArray(attachmentUrls)
+      ? attachmentUrls
+          .filter((u: unknown) => typeof u === "string" && /^https?:\/\//.test(u))
+          .slice(0, 6)
+          .map((u: string) => u.slice(0, 500))
+      : undefined;
     const result = await ctx.runMutation(api.orders.emailInbound, {
       from: String(from).slice(0, 200),
       subject: subject ? String(subject).slice(0, 200) : undefined,
       text: text ? String(text).slice(0, 5000) : undefined,
+      attachmentUrls: cleanAttachments && cleanAttachments.length ? cleanAttachments : undefined,
     });
     return json(result);
   }),
@@ -361,6 +418,50 @@ http.route({
     if (!jobId || !videoUrl || !posterUrl)
       return json({ error: "jobId + videoUrl + posterUrl required" }, 400);
     const result = await ctx.runMutation(api.orders.applyRevision, { jobId, videoUrl, posterUrl });
+    return json(result, result?.ok === false ? (result.error === "job not found" ? 404 : 409) : 200);
+  }),
+});
+
+// Resume an awaiting_info job after the customer answered our questions (feedback.py
+// sends the folded brief here). 409 if the job already moved out of awaiting_info.
+http.route({ path: "/api/worker/resume-info", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/resume-info",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    const { jobId, brief } = body ?? {};
+    if (!jobId || typeof brief !== "object" || brief === null)
+      return json({ error: "jobId + brief object required" }, 400);
+    const result = await ctx.runMutation(api.orders.resumeFromInfo, { jobId, brief });
+    return json(result, result?.ok === false ? (result.error === "job not found" ? 404 : 409) : 200);
+  }),
+});
+
+// Pre-delivery storyline feedback: append the note to brief.feedbackNotes and
+// re-queue the job. 409 if the job is no longer pre-delivery (e.g. just delivered).
+http.route({ path: "/api/worker/requeue-feedback", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/requeue-feedback",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    const { jobId, feedback } = body ?? {};
+    if (!jobId || typeof feedback !== "string" || !feedback.trim())
+      return json({ error: "jobId + feedback required" }, 400);
+    const result = await ctx.runMutation(api.orders.requeueForFeedback, { jobId, feedback });
     return json(result, result?.ok === false ? (result.error === "job not found" ? 404 : 409) : 200);
   }),
 });
