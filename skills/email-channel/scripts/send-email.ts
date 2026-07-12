@@ -216,9 +216,91 @@ function delivered(d: Data): Rendered {
   return { subject, html: shell(`Your ${product} trailer is ready`, body), text };
 }
 
+// Autonomous feedback loop: the customer asked for a tweak, the agent recut the
+// trailer, and this ships the new cut with a one-line "what changed" summary.
+function revisionReady(d: Data): Rendered {
+  const product = d.productName || "your launch";
+  const video = d.videoUrl || "";
+  const dash = d.dashboardUrl || d.statusUrl || "";
+  const poster = d.posterUrl || "";
+  const changed = d.whatChanged || "We applied your notes and re-rendered the trailer.";
+  const subject = `🎬 Your ${product} trailer — new cut is ready`;
+
+  const posterBlock = poster
+    ? `<a href="${esc(video || dash)}" style="text-decoration:none;">
+         <img src="${esc(poster)}" alt="${esc(product)} trailer" width="500"
+           style="width:100%;max-width:500px;border-radius:12px;border:1px solid ${BRAND.border};display:block;margin:4px 0 2px;"></a>`
+    : "";
+
+  const body = `
+    <h1 style="margin:0 0 8px;font:800 24px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      Recut & ready. 🎬</h1>
+    <p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      We heard you and reworked your <b>${esc(product)}</b> trailer.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+      style="margin:6px 0 4px;background:${BRAND.bg};border:1px solid ${BRAND.border};border-radius:12px;">
+      <tr><td style="padding:14px 16px;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+        <b style="color:${BRAND.ink};">What changed</b><br>
+        ${esc(changed)}
+      </td></tr>
+    </table>
+    ${posterBlock}
+    ${video ? button(video, "▶ Watch the new cut") : (dash ? button(dash, "▶ Open your trailer") : "")}
+    <p style="margin:18px 0 0;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+      That was your one free revision. Need another change? Just reply — a human
+      director on our team will take it from here.</p>
+  `;
+
+  const text = [
+    `Recut & ready.`,
+    ``,
+    `We heard you and reworked your ${product} trailer.`,
+    ``,
+    `What changed: ${changed}`,
+    video ? `\nWatch the new cut: ${video}` : (dash ? `\nOpen it: ${dash}` : ""),
+    ``,
+    `That was your one free revision. Need another change? Reply and a human director will take it from here.`,
+    ``,
+    `— LaunchReel`,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  return { subject, html: shell(`Your ${product} trailer — new cut`, body), text };
+}
+
+// Generic branded reply — used for the feedback-loop edge cases (no matching
+// order, or an escalation to a human). Caller supplies subject/heading/body.
+function reply(d: Data): Rendered {
+  const subject = d.subject || "Re: your LaunchReel trailer";
+  const heading = d.heading || "Thanks for the note";
+  const raw = String(d.body ?? "");
+  const paras = raw
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const htmlBody = paras
+    .map(
+      (p) =>
+        `<p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">${esc(
+          p
+        ).replace(/\n/g, "<br>")}</p>`
+    )
+    .join("\n");
+
+  const body = `
+    <h1 style="margin:0 0 12px;font:800 22px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      ${esc(heading)}</h1>
+    ${htmlBody}
+  `;
+
+  const text = [heading, ``, raw.trim(), ``, `— LaunchReel`].join("\n");
+  return { subject, html: shell(heading, body), text };
+}
+
 const TEMPLATES: Record<string, (d: Data) => Rendered> = {
   order_confirmation: orderConfirmation,
   delivered,
+  revision_ready: revisionReady,
+  reply,
 };
 
 // ---- arg parsing ----------------------------------------------------------

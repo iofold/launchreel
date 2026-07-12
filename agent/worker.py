@@ -35,10 +35,16 @@ import sys
 import time
 import urllib.request
 
+import feedback  # autonomous email revision loop (checked between claim polls)
+
 BASE = os.environ.get("CONVEX_SITE_URL", "").rstrip("/")
 KEY = os.environ.get("WORKER_KEY", "")
 WORKER_ID = os.environ.get("WORKER_ID") or socket.gethostname()
 POLL = float(os.environ.get("POLL_SECONDS", "5"))
+# How often an idle worker checks the revision inbox. Only runs when the render
+# queue is empty (between claim polls), so a revision render never overlaps a
+# pipeline render in this lane — that overlap is what OOM'd the box before.
+INBOX_EVERY = float(os.environ.get("INBOX_EVERY_SECONDS", "30"))
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -379,10 +385,20 @@ def main() -> None:
         if not claim_and_process():
             log("", "queue empty — nothing to do")
         return
-    log("", f"worker up (poll {POLL}s) -> {BASE}")
+    log("", f"worker up (poll {POLL}s, inbox {INBOX_EVERY}s) -> {BASE}")
+    last_inbox = 0.0
     while True:
         try:
             if not claim_and_process():
+                # Queue empty this poll -> nothing rendering in this lane, so it's
+                # safe to check the revision inbox (rate-limited to ~INBOX_EVERY).
+                now = time.monotonic()
+                if now - last_inbox >= INBOX_EVERY:
+                    last_inbox = now
+                    try:
+                        feedback.check_inbox_once(send_email=send_email)
+                    except Exception as e:  # noqa: BLE001 — inbox is best-effort
+                        log("", f"inbox check error: {e}")
                 time.sleep(POLL)
         except KeyboardInterrupt:
             raise

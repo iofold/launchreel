@@ -399,6 +399,120 @@ export const emailInbound = mutation({
   },
 });
 
+// ---- Autonomous email feedback loop ---------------------------------------
+// A customer replies to their trailer email with feedback. feedback.py polls
+// these unprocessed email_inbound events, matches the sender to their latest
+// delivered trailer, applies at most one minimal revision, then acks the event.
+
+// List unprocessed inbound emails, each joined to its sender and that sender's
+// latest job that already has a rendered video (the trailer the reply is about).
+// "Unprocessed" = the email_inbound event has no meta.processed flag yet.
+export const unprocessedInbound = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_type", (q) => q.eq("type", "email_inbound"))
+      .order("asc")
+      .collect();
+    const pending = events
+      .filter((e) => !(e.meta && (e.meta as any).processed))
+      .slice(0, Math.max(1, Math.min(limit ?? 25, 50)));
+
+    const out = [];
+    for (const e of pending) {
+      const user = e.userId ? await ctx.db.get(e.userId) : null;
+      let job = null;
+      if (user) {
+        const jobs = await ctx.db
+          .query("jobs")
+          .withIndex("by_user", (q) => q.eq("userId", user._id))
+          .collect();
+        // Latest job that actually has a video to revise (newest by updatedAt).
+        const withVideo = jobs
+          .filter((j) => !!j.videoUrl)
+          .sort((a, b) => b.updatedAt - a.updatedAt);
+        const j = withVideo[0];
+        if (j) {
+          job = {
+            jobId: j._id,
+            tier: j.tier,
+            productName: j.productName,
+            oneLiner: j.oneLiner,
+            url: j.url ?? null,
+            status: j.status,
+            videoUrl: j.videoUrl ?? null,
+            posterUrl: j.posterUrl ?? null,
+            revisionCount: j.revisionCount ?? 0,
+          };
+        }
+      }
+      out.push({
+        eventId: e._id,
+        email: user?.email ?? null,
+        subject: (e.meta as any)?.subject ?? "",
+        text: (e.meta as any)?.text ?? "",
+        createdAt: e.createdAt,
+        job,
+      });
+    }
+    return out;
+  },
+});
+
+// Mark an inbound email event handled, recording how it was resolved (revised |
+// no_job | escalated_human | failed). Idempotent: acking twice is harmless.
+export const markInboundProcessed = mutation({
+  args: { eventId: v.id("events"), resolution: v.string() },
+  handler: async (ctx, { eventId, resolution }) => {
+    const e = await ctx.db.get(eventId);
+    if (!e) return { ok: false, error: "event not found" };
+    const meta = {
+      ...((e.meta as any) ?? {}),
+      processed: true,
+      resolution: String(resolution).slice(0, 120),
+      processedAt: Date.now(),
+    };
+    await ctx.db.patch(eventId, { meta });
+    return { ok: true };
+  },
+});
+
+// Apply the one allowed revision: bump revisionCount, swap in the recut's
+// videoUrl/posterUrl, and re-deliver. Guarded at the DB level — if a revision
+// was already applied (revisionCount >= 1) this refuses, so a double-processed
+// inbound can never produce a second recut (belt-and-suspenders with the
+// worker's single-flight + feedback.py's revisionCount check).
+export const applyRevision = mutation({
+  args: {
+    jobId: v.id("jobs"),
+    videoUrl: v.string(),
+    posterUrl: v.string(),
+  },
+  handler: async (ctx, { jobId, videoUrl, posterUrl }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return { ok: false, error: "job not found" };
+    if ((job.revisionCount ?? 0) >= 1)
+      return { ok: false, error: "already revised", revisionCount: job.revisionCount };
+    const revisionCount = (job.revisionCount ?? 0) + 1;
+    await ctx.db.patch(jobId, {
+      revisionCount,
+      videoUrl,
+      posterUrl,
+      status: "delivered",
+      updatedAt: Date.now(),
+    });
+    await ctx.db.insert("events", {
+      type: "revision_applied",
+      ...(job.userId ? { userId: job.userId } : {}),
+      jobId,
+      meta: { revisionCount },
+      createdAt: Date.now(),
+    });
+    return { ok: true, revisionCount };
+  },
+});
+
 // Public job status for the live dashboard (jobId is unguessable).
 export const jobStatus = query({
   args: { jobId: v.id("jobs") },

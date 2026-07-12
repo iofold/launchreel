@@ -213,8 +213,11 @@
   .track .dot.on{background:var(--green)}
   .track .lbl{font-weight:800;font-size:12px}
 
-  .grid2{display:grid;gap:16px;grid-template-columns:1fr}
-  @media(min-width:760px){.grid2{grid-template-columns:1.15fr .85fr}}
+  /* minmax(0,…) lets the columns shrink below the storyboard board's 560px
+     min-width (which otherwise forces the viewport to scroll horizontally at
+     narrow widths); the board-strip keeps its own internal overflow-x scroll. */
+  .grid2{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+  @media(min-width:760px){.grid2{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}}
 
   /* storyboard */
   .board-strip{overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
@@ -391,6 +394,19 @@
   .hint-banner{background:var(--purple);color:#fff;border:var(--bd);border-radius:14px;padding:12px 15px;
     box-shadow:var(--shadow);display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 0}
   .hint-banner b{font-weight:900}
+
+  /* ---------- live pipeline (real Convex data drives these) ---------- */
+  .live-banner{border:var(--bd);border-radius:16px;padding:14px 16px;background:var(--purple);color:#fff;
+    box-shadow:var(--shadow);margin-top:16px;display:none;font-weight:800;font-size:14px}
+  .live-banner.show{display:block;animation:gatepop .4s var(--spring)}
+  .live-banner b{font-weight:900}
+  /* real delivered trailer replaces the fake poster in the delivery player */
+  .player.has-video .poster,.player.has-video .playbig,.player.has-video .p-bar{display:none}
+  .player video.real-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;display:block}
+  /* real premiere video replaces the fake channel poster on Buildathon TV */
+  .tv-screen.has-video .tv-play,.tv-screen.has-video .tv-prog{display:none}
+  .tv-screen video.tv-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:2;display:block}
+
   @media (prefers-reduced-motion: reduce){*{animation-duration:.001s!important}}
 </style>
 </head>
@@ -524,6 +540,8 @@
       <div class="track" id="track"></div>
     </div>
 
+    <div class="live-banner" id="liveBanner">🎬 <b>Preview ready</b> — the studio is reviewing your cut. We'll email it the moment it's approved.</div>
+
     <div class="grid2" style="margin-top:16px">
       <div class="card">
         <h3 style="margin-bottom:12px">🎞️ Storyboard — 6 scenes</h3>
@@ -636,6 +654,7 @@
           <button class="chpad-btn" id="chNext" type="button" aria-label="Next channel">Next ▶</button>
           <button class="snd-toggle" id="sndBtn" type="button" aria-pressed="false" aria-label="Toggle channel-surf sound">🔇</button>
         </div>
+        <button class="btn pink block" id="tvClaimBtn" type="button" style="display:none;margin-top:12px">🎁 Claim this trailer</button>
         <p class="surf-hint">Click a show, tap ◀ ▶, use arrow keys, or swipe the screen to channel-surf.</p>
       </div>
 
@@ -717,13 +736,102 @@
     function tick(){
       apiPost('/api/job/status', { jobId: jobId }).then(function(r){
         if(!r.job) return;
-        out.textContent = r.job.status.replace(/_/g,' ');
-        if(r.job.status === 'delivered'){ clearInterval(livePollTimer); toast('📦 Order book: DELIVERED'); }
-        if(r.job.status === 'failed'){ clearInterval(livePollTimer); }
+        var s = r.job.status;
+        out.textContent = s.replace(/_/g,' ');
+        // Real status drives the dashboard stage lights (theater is suppressed
+        // in live mode); only fire the stage/feed on an actual transition.
+        if(state.liveDriven){
+          if(s !== state.liveStage){
+            applyRealStatus(s);
+            pushLiveFeed(s);
+            state.liveStage = s;
+          }
+          // Real cut available → prep the delivery player's <video>.
+          if((s === 'awaiting_approval' || s === 'delivered') && r.job.videoUrl){
+            prepDeliveredVideo(r.job.videoUrl, r.job.posterUrl, r.job.productName);
+          }
+          // Delivered → auto-advance to the delivery screen (once).
+          if(s === 'delivered' && !state.liveDeliveredShown){
+            state.liveDeliveredShown = true;
+            setTimeout(function(){ if(state.screen === 'dashboard') deliverReal(); }, 900);
+          }
+        }
+        if(s === 'delivered'){ clearInterval(livePollTimer); toast('📦 Order book: DELIVERED'); }
+        if(s === 'failed'){ clearInterval(livePollTimer); }
       }).catch(function(){ /* transient — keep polling */ });
     }
     tick();
     livePollTimer = setInterval(tick, 5000);
+  }
+
+  /* ---------------------------------------------------------------
+     LIVE STAGE MAPPING — real job.status → dashboard stage lights.
+     Real status beats the simulated theater; playful feed lines stay.
+     --------------------------------------------------------------- */
+  var LIVE_MAP = {
+    queued:            {ag:{},                                                                          dots:0, sc:'idle',     prog:[3,  'Queued — waiting for a free render worker…', 'ETA —']},
+    research:          {ag:{scout:'active'},                                                            dots:0, sc:'idle',     prog:[12, 'Scout is researching your brand…',        'ETA —']},
+    storyboard:        {ag:{scout:'done',strategist:'active',director:'active'},                        dots:1, sc:'drafted',  prog:[32, 'Directing your 6-scene storyboard…',      'ETA —']},
+    voiceover:         {ag:{scout:'done',strategist:'done',director:'done',renderer:'active'},          dots:3, sc:'approved', prog:[55, 'Recording the voiceover…',                'ETA —']},
+    rendering:         {ag:{scout:'done',strategist:'done',director:'done',renderer:'active'},          dots:3, sc:'rendered', prog:[82, 'Rendering motion graphics…',              'ETA —']},
+    awaiting_approval: {ag:{scout:'done',strategist:'done',director:'done',renderer:'done',publisher:'done'}, dots:5, sc:'rendered', prog:[100,'Preview ready 🎬', 'review']},
+    delivered:         {ag:{scout:'done',strategist:'done',director:'done',renderer:'done',publisher:'done'}, dots:5, sc:'rendered', prog:[100,'Delivered 🎉',   'done']},
+    failed:            {ag:{},                                                                          dots:0, sc:'idle',     prog:[0,  'Something snagged — the studio is on it', 'ETA —']}
+  };
+  function applyRealStatus(status){
+    var m = LIVE_MAP[status]; if(!m) return;
+    AGENTS.forEach(function(a){ setAgent(a.id, m.ag[a.id] || 'idle'); });
+    setDots(m.dots);
+    SCENES.forEach(function(s,i){ setScene(i, m.sc); });
+    setProgress(m.prog[0], m.prog[1], m.prog[2]);
+    var banner = document.getElementById('liveBanner');
+    if(banner) banner.classList.toggle('show', status === 'awaiting_approval');
+  }
+  // Feed lines tied to real status transitions (staggered so they read live).
+  function pushLiveFeed(status){
+    var groups = ({
+      research:          [['scout', FEED.scout]],
+      storyboard:        [['strategist', FEED.strategist], ['director', FEED.director]],
+      voiceover:         [['renderer', [FEED.renderer[0], FEED.renderer[1]]]],
+      rendering:         [['renderer', [FEED.renderer[2]]]],
+      awaiting_approval: [['publisher', ['preview’s ready — sending it up for a final look 👀']]],
+      delivered:         [['publisher', FEED.publisher]]
+    })[status] || [];
+    var flat = [];
+    groups.forEach(function(g){ g[1].forEach(function(line){ flat.push([g[0], line]); }); });
+    flat.forEach(function(pair, i){
+      setTimeout(function(){ if(state.liveDriven && state.liveStage === status) pushFeed(pair[0], pair[1]); }, i * 850);
+    });
+  }
+  // Real delivered cut → swap the delivery player's fake poster for a <video>.
+  function prepDeliveredVideo(videoUrl, posterUrl, name){
+    if(!videoUrl) return;
+    var d = state.deliveredVideo;
+    if(d && d.videoUrl === videoUrl && d.posterUrl === (posterUrl || '')) return;
+    state.deliveredVideo = { videoUrl:videoUrl, posterUrl:posterUrl || '', name:name || state.product.name };
+    if(state.screen === 'delivery') renderDeliveredVideo();
+  }
+  function renderDeliveredVideo(){
+    var d = state.deliveredVideo; if(!d || !d.videoUrl) return;
+    var player = document.getElementById('player');
+    var vid = player.querySelector('video.real-vid');
+    if(!vid){
+      vid = document.createElement('video');
+      vid.className = 'real-vid';
+      vid.setAttribute('controls',''); vid.setAttribute('playsinline','');
+      player.appendChild(vid);
+    }
+    if(d.posterUrl) vid.setAttribute('poster', d.posterUrl);
+    if(vid.getAttribute('src') !== d.videoUrl) vid.setAttribute('src', d.videoUrl);
+    player.classList.add('has-video');
+    if(d.name) document.getElementById('dvName').textContent = d.name;
+  }
+  function deliverReal(){
+    go('delivery');
+    if(state.deliveredVideo) renderDeliveredVideo();
+    else startPoster(true);
+    setTimeout(confettiBurst, 250);
+    toast('🎉 Your launch trailer is delivered!');
   }
 
   /* ---------------------------------------------------------------
@@ -735,7 +843,14 @@
     product : { name:'Ledgerly', one:'Bookkeeping on autopilot', email:'', url:'' },
     assets  : { logo:false, shots:0 },                           // intake upload counts
     pipeline: { runId:0, revisionUsed:false, approveResolve:null }, // dashboard run engine
-    tv      : { tunedIdx:0, playing:false, progTimer:null, soundOn:false, ac:null } // Buildathon TV
+    tv      : { tunedIdx:0, playing:false, progTimer:null, soundOn:false, ac:null,
+                realMode:false, realSig:null, tvTimer:null },    // Buildathon TV (+ live premieres)
+    // --- live order (real Convex job drives the dashboard/delivery, not theater) ---
+    jobId   : null,
+    liveDriven: false,          // true once a real order is placed → real status wins
+    liveStage : null,           // last real status applied (transition detection)
+    liveDeliveredShown: false,  // auto-advance to delivery only once
+    deliveredVideo: null        // {videoUrl, posterUrl, name} once the real cut lands
   };
 
   /* ---------------------------------------------------------------
@@ -903,7 +1018,15 @@
     state.screen = name;
     Object.keys(screens).forEach(function(k){ $(screens[k]).classList.toggle('on', k===name); });
     $$('.navlinks .tab').forEach(function(t){ t.classList.toggle('on', t.getAttribute('data-go')===name); });
-    if(name==='tv') initTuner();            // paint the featured surface on entry
+    if(name==='tv'){
+      initTuner();                          // paint the featured surface + poll live premieres
+    } else {
+      // Leaving TV: stop the /api/tv poll and pause any real premiere video.
+      if(state.tv.tvTimer){ clearInterval(state.tv.tvTimer); state.tv.tvTimer=null; }
+      var tvVid=$('#tvStage video'); if(tvVid){ try{ tvVid.pause(); }catch(e){} }
+    }
+    // Entering delivery with a real cut already in hand → show it.
+    if(name==='delivery' && state.deliveredVideo) renderDeliveredVideo();
     window.scrollTo({top:0,behavior:'smooth'});
   }
   $$('.navlinks .tab').forEach(function(t){
@@ -1022,6 +1145,7 @@
     state.pipeline.revisionUsed=false;
     $('#reviseBtn').disabled=false;
     $('#gate').className='gate';
+    var lb=document.getElementById('liveBanner'); if(lb) lb.classList.remove('show');
   }
 
   function showGate(){
@@ -1042,6 +1166,12 @@
 
   async function runPipeline(){
     var myId = ++state.pipeline.runId;
+    // Theater (simulate / re-run): drop out of live mode so real-status polling
+    // doesn't fight the simulated stage.
+    state.liveDriven = false;
+    clearInterval(livePollTimer);
+    document.getElementById('liveChip').style.display = 'none';
+    document.getElementById('liveBanner').classList.remove('show');
     resetPipeline();
     go('dashboard');
     await sleep(400); if(!isAlive(myId))return;
@@ -1136,6 +1266,11 @@
      DELIVERY + CONFETTI
      --------------------------------------------------------------- */
   function deliver(){
+    // Fake (simulate/theater) delivery — clear any real cut from a prior order.
+    var player=$('#player'), rv=player.querySelector('video.real-vid');
+    if(rv) rv.remove();
+    player.classList.remove('has-video');
+    state.deliveredVideo=null;
     go('delivery');
     startPoster(true);
     setTimeout(confettiBurst, 250);
@@ -1211,7 +1346,13 @@
   paintPoster(0);
 
   // delivery action buttons
-  $('#dlBtn').addEventListener('click',function(){ toast('⬇️ Downloading '+($('#dvName').textContent)+'-trailer.mp4 (1080×1920)…'); });
+  $('#dlBtn').addEventListener('click',function(){
+    if(state.deliveredVideo && state.deliveredVideo.videoUrl){
+      window.open(state.deliveredVideo.videoUrl, '_blank');
+      return;
+    }
+    toast('⬇️ Downloading '+($('#dvName').textContent)+'-trailer.mp4 (1080×1920)…');
+  });
   $('#xBtn').addEventListener('click',function(){ toast('𝕏 Opening X with your post prefilled…'); });
   $('#upBtn').addEventListener('click',function(){ showPay('Pay ₹2,999 · Content Pack · UPI'); });
   $('#rmwBtn').addEventListener('click',function(){ showPay('Pay ₹999 · Launch Trailer · UPI'); });
@@ -1243,6 +1384,12 @@
      (Broadcast-TV structure, Pop Studio visuals)
      --------------------------------------------------------------- */
   function tvPoster(c){
+    // Real delivered premiere → play the actual trailer with native controls.
+    if(c.real && c.videoUrl){
+      return '<video class="tv-vid" controls playsinline preload="metadata" '
+        + (c.posterUrl ? ('poster="'+esc(c.posterUrl)+'" ') : '')
+        + 'src="'+esc(c.videoUrl)+'"></video>';
+    }
     var s1='width:120px;height:120px;border-radius:50%;top:-26px;left:-32px;';
     var s2='width:78px;height:78px;top:34%;right:-24px;transform:rotate(18deg);';
     var s3='width:52px;height:52px;border-radius:50%;bottom:104px;left:14px;';
@@ -1258,9 +1405,11 @@
   function renderGuide(){
     var rows=CHANNELS.map(function(c,i){
       var mono=c.name.trim().charAt(0).toUpperCase();
-      var badge = c.live
+      // Real mode: the tuned channel is ON AIR, the rest are UP NEXT (no fake times).
+      var onair = c.real ? (i===state.tv.tunedIdx) : c.live;
+      var badge = onair
         ? '<span class="g-badge on-air"><span class="d"></span>ON AIR</span>'
-        : '<span class="g-badge next">NEXT '+c.when+'</span>';
+        : (c.real ? '<span class="g-badge next">UP NEXT</span>' : '<span class="g-badge next">NEXT '+c.when+'</span>');
       return '<button class="grow" data-idx="'+i+'" type="button" aria-pressed="false" '
         + 'aria-label="'+esc(c.name)+' — '+esc(c.tag)+', channel '+c.ch+'">'
         + '<span class="g-thumb" style="background:'+c.c+'"><span class="g-num">'+c.ch+'</span>'+mono+'</span>'
@@ -1281,6 +1430,14 @@
       var on = (+r.getAttribute('data-idx'))===state.tv.tunedIdx;
       r.classList.toggle('tuned', on);
       r.setAttribute('aria-pressed', String(on));
+      // Real mode: ON AIR follows the tuned channel without a full re-render.
+      if(state.tv.realMode){
+        var badge = r.querySelector('.g-badge');
+        if(badge){
+          if(on){ badge.className='g-badge on-air'; badge.innerHTML='<span class="d"></span>ON AIR'; }
+          else { badge.className='g-badge next'; badge.textContent='UP NEXT'; }
+        }
+      }
     });
   }
 
@@ -1335,6 +1492,9 @@
     state.tv.tunedIdx=((i%n)+n)%n;
     var c=CHANNELS[state.tv.tunedIdx];
     stopTvPlay();
+    var hasVid = !!(c.real && c.videoUrl);
+    $('#tvScreen').classList.toggle('has-video', hasVid);
+    $('#tvClaimBtn').style.display = (c.real && c.jobId) ? '' : 'none';
     var stage=$('#tvStage');
     stage.innerHTML=tvPoster(c);
     if(animate){
@@ -1353,14 +1513,69 @@
   }
   function channelStep(dir){ tuneTo(state.tv.tunedIdx+dir, true); }
 
+  // Pull real delivered premieres from Convex. Non-empty result → the guide +
+  // featured surface show real trailers; empty/failed → the fake premieres stay
+  // (the wall demo can never go dark).
+  function fetchTv(){
+    if(!CONVEX_SITE_URL) return;
+    apiPost('/api/tv', {}).then(function(r){
+      var jobs = r && r.jobs;
+      if(!Array.isArray(jobs) || !jobs.length) return;   // keep fake premieres
+      applyTvJobs(jobs);
+    }).catch(function(){ /* keep fake premieres */ });
+  }
+  function applyTvJobs(jobs){
+    // Only rebuild when the set actually changed — avoids interrupting a video
+    // the audience is watching on each 20s poll.
+    var sig = jobs.map(function(j){ return j._id + ':' + (j.videoUrl || ''); }).join('|');
+    if(state.tv.realSig === sig) return;
+    state.tv.realSig = sig;
+    var palette=['var(--blue)','var(--green)','var(--purple)','var(--orange)','var(--pink)','#0EA5A0','#E4B000','#5563E0'];
+    CHANNELS = jobs.map(function(j,i){
+      return {
+        ch: ('0'+(i+1)).slice(-2),
+        name: j.productName || 'Untitled',
+        tag: j.oneLiner || '',
+        c: palette[i % palette.length],
+        jobId: j._id,
+        videoUrl: j.videoUrl || '',
+        posterUrl: j.posterUrl || '',
+        real: true,
+        live: i===0
+      };
+    });
+    state.tv.realMode = true;
+    var idx = Math.min(state.tv.tunedIdx, CHANNELS.length-1);
+    renderGuide();
+    tuneTo(idx, false);
+  }
+
   function initTuner(){
     if(!$('#guideRows').children.length) renderGuide();
     tuneTo(state.tv.tunedIdx, false);
+    fetchTv();                              // fetch real premieres on entry
+    if(state.tv.tvTimer) clearInterval(state.tv.tvTimer);
+    state.tv.tvTimer = setInterval(function(){ if(state.screen==='tv') fetchTv(); }, 20000);
   }
 
   $('#chPrev').addEventListener('click',function(){ channelStep(-1); });
   $('#chNext').addEventListener('click',function(){ channelStep(1); });
   $('#tvPlay').addEventListener('click',tvPlay);
+  // Claim the currently-featured real premiere (founder drops their email).
+  $('#tvClaimBtn').addEventListener('click',function(){
+    var c=CHANNELS[state.tv.tunedIdx];
+    if(!c || !c.jobId){ toast('This channel isn’t claimable'); return; }
+    var email=(prompt('Claim “'+c.name+'” — where should we send it? (email)')||'').trim();
+    if(!email) return;
+    if(!EMAIL_RE.test(email)){ toast('✋ That email doesn’t look right — try again'); return; }
+    if(!CONVEX_SITE_URL){ toast('⚠️ Demo mode — claim not recorded'); return; }
+    apiPost('/api/claim', { jobId:c.jobId, email:email, source:'tv_claim' })
+      .then(function(r){
+        if(r && r.ok===false){ toast('😖 '+esc(r.error||'claim failed')); return; }
+        toast('🎁 Claimed '+esc(c.name)+' — check your email!'); confettiBurst();
+      })
+      .catch(function(err){ toast('😖 Claim failed: '+esc(err.message)); });
+  });
   $('#sndBtn').addEventListener('click',function(){
     state.tv.soundOn=!state.tv.soundOn;
     this.textContent=state.tv.soundOn?'🔊':'🔇';
@@ -1451,10 +1666,16 @@
     var btn=$('#makeBtn'); btn.disabled=true; btn.textContent='Placing order…';
     apiPost('/api/order', { email:email, productName:name, oneLiner:one, url:url||undefined, tier:TIER_API[state.tier] })
       .then(function(r){
+        // Real order: the live Convex job — not the theater — drives the board.
         state.jobId=r.jobId;
+        state.liveDriven=true; state.liveStage=null; state.liveDeliveredShown=false;
+        state.deliveredVideo=null;
+        var pl=$('#player'), rv=pl.querySelector('video.real-vid');
+        if(rv) rv.remove(); pl.classList.remove('has-video');
         toast('🧾 Order '+String(r.jobId).slice(-6)+' placed — crew starting!');
+        go('dashboard');
+        resetPipeline();
         pollLiveStatus(r.jobId);
-        runPipeline();
       })
       .catch(function(err){ toast('😖 Order failed: '+esc(err.message)+' — try again or find us at the table'); })
       .finally(function(){ btn.disabled=false; btn.textContent='🚀 Make my trailer'; });

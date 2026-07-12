@@ -84,6 +84,18 @@ http.route({
   }),
 });
 
+// Buildathon TV: public delivered-premieres feed (read-only, CORS-open like
+// /api/job/status). Powers the on-the-wall program guide + featured player.
+http.route({ path: "/api/tv", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/tv",
+  method: "POST",
+  handler: httpAction(async (ctx) => {
+    const jobs = await ctx.runQuery(api.orders.delivered, {});
+    return json({ jobs });
+  }),
+});
+
 http.route({ path: "/api/signup", method: "OPTIONS", handler: preflight });
 http.route({
   path: "/api/signup",
@@ -288,6 +300,68 @@ http.route({
       return json({ error: "jobId + brief object required" }, 400);
     const result = await ctx.runMutation(api.orders.attachBrief, { jobId, brief });
     return json(result);
+  }),
+});
+
+// ---- Autonomous email feedback loop (feedback.py) -------------------------
+// Same shared secret as the worker pool (X-Worker-Key).
+
+// List unprocessed inbound emails + the sender's latest job-with-video.
+http.route({ path: "/api/worker/inbox", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/inbox",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {}
+    const limit = typeof body?.limit === "number" ? body.limit : undefined;
+    const items = await ctx.runQuery(api.orders.unprocessedInbound, { limit });
+    return json({ items });
+  }),
+});
+
+// Ack an inbound event as processed (resolution: revised|no_job|escalated_human|failed).
+http.route({ path: "/api/worker/inbox/ack", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/inbox/ack",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    const { eventId, resolution } = body ?? {};
+    if (!eventId || typeof resolution !== "string")
+      return json({ error: "eventId + resolution required" }, 400);
+    const result = await ctx.runMutation(api.orders.markInboundProcessed, { eventId, resolution });
+    return json(result, result?.ok === false ? 404 : 200);
+  }),
+});
+
+// Apply the one allowed revision (bump revisionCount, new URLs, re-deliver).
+http.route({ path: "/api/worker/revision", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/revision",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    const { jobId, videoUrl, posterUrl } = body ?? {};
+    if (!jobId || !videoUrl || !posterUrl)
+      return json({ error: "jobId + videoUrl + posterUrl required" }, 400);
+    const result = await ctx.runMutation(api.orders.applyRevision, { jobId, videoUrl, posterUrl });
+    return json(result, result?.ok === false ? (result.error === "job not found" ? 404 : 409) : 200);
   }),
 });
 

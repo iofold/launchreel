@@ -32,6 +32,9 @@ export default defineSchema({
     assetRefs: v.optional(v.array(v.string())), // R2 keys for logo/screenshots
     videoUrl: v.optional(v.string()),
     posterUrl: v.optional(v.string()),
+    // Autonomous email feedback loop: how many customer-requested revisions have
+    // been applied. One is allowed; the next reply escalates to a human.
+    revisionCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
