@@ -162,7 +162,7 @@ def notify(job: dict, template: str) -> None:
         "productName": job.get("productName"),
         "tier": job.get("tier"),
         "jobId": job.get("jobId"),
-        "dashboardUrl": web,
+        "dashboardUrl": f"{web}/#job={job.get('jobId')}",  # resumable live-status permalink
     }
     if template == "delivered":
         data["videoUrl"] = job.get("videoUrl")

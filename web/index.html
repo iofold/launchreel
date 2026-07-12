@@ -407,6 +407,35 @@
   .tv-screen.has-video .tv-play,.tv-screen.has-video .tv-prog{display:none}
   .tv-screen video.tv-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:2;display:block}
 
+  /* ---------- demo-mode affordance (never confuse a sample with a real order) ---------- */
+  .btn.sim .demo-badge{margin-left:7px;background:var(--ink);color:var(--yellow);font-weight:900;font-size:10px;
+    letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border-radius:6px;vertical-align:middle}
+  #demoChip{background:var(--ink);color:#fff}
+  #demoChip b{color:var(--yellow)}
+
+  /* ---------- venue WALL MODE (?wall=1 / #wall): chromeless auto-loop for the room TV ---------- */
+  .wall{position:fixed;inset:0;z-index:200;background:#0b0b0f;display:none}
+  .wall.on{display:block}
+  body.wall-on{overflow:hidden}
+  .wall-stage{position:absolute;inset:0;overflow:hidden}
+  .wall-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0b0b0f}
+  .wall-scrim{position:absolute;left:0;right:0;bottom:0;height:42%;pointer-events:none;
+    background:linear-gradient(to top,rgba(0,0,0,.85),rgba(0,0,0,0))}
+  .wall-onair{position:absolute;top:3.4vh;left:3.4vh;z-index:3;display:inline-flex;align-items:center;gap:1.1vh;
+    background:var(--pink);color:#fff;font-weight:900;font-size:clamp(15px,2.1vh,30px);letter-spacing:.06em;
+    padding:.7vh 1.4vh;border:3px solid #fff;border-radius:12px;box-shadow:4px 4px 0 rgba(0,0,0,.5)}
+  .wall-onair .d{width:1.5vh;height:1.5vh;border-radius:50%;background:#fff;animation:pillpulse 1s infinite}
+  .wall-lower{position:absolute;left:0;right:0;bottom:5vh;z-index:3;text-align:center;padding:0 5vw}
+  .wall-name{color:#fff;font-weight:900;font-size:clamp(34px,8.4vh,120px);line-height:1.02;
+    text-shadow:0 4px 26px rgba(0,0,0,.75),3px 3px 0 rgba(0,0,0,.45)}
+  .wall-tag{color:#fff;font-weight:700;font-size:clamp(17px,3.4vh,46px);margin-top:1.3vh;opacity:.96;
+    text-shadow:0 2px 16px rgba(0,0,0,.85)}
+  .wall-claim{position:absolute;left:3.4vh;bottom:3.4vh;z-index:4;display:flex;align-items:center;gap:1.6vh;
+    background:rgba(255,253,244,.97);border:3px solid #111;border-radius:16px;padding:1.4vh;box-shadow:6px 6px 0 rgba(0,0,0,.5)}
+  .wall-qr{width:clamp(80px,12vh,150px);height:clamp(80px,12vh,150px);image-rendering:pixelated;border-radius:8px;display:block}
+  .wall-claim-cap{font-weight:800;color:#111;font-size:clamp(13px,2vh,24px);line-height:1.18;max-width:30vh}
+  .wall-claim-cap b{font-weight:900}
+
   @media (prefers-reduced-motion: reduce){*{animation-duration:.001s!important}}
 </style>
 </head>
@@ -431,7 +460,7 @@
       <button class="tab" data-go="dashboard">Job Board</button>
       <button class="tab" data-go="delivery">Delivery</button>
       <button class="tab" data-go="tv">Buildathon TV</button>
-      <button class="btn sim" id="simBtn" type="button">▶ Simulate order</button>
+      <button class="btn sim" id="simBtn" type="button" title="Scripted sample run — not a real order">▶ Simulate order<span class="demo-badge">demo</span></button>
     </nav>
   </div>
 </header>
@@ -530,6 +559,7 @@
       <span class="chip">💬 <span id="obOne">Bookkeeping on autopilot</span></span>
       <span class="chip">🎟️ <b id="obTier">₹999 Launch Trailer</b></span>
       <span class="chip" id="liveChip" style="display:none">📡 order book: <b id="liveStatus">—</b></span>
+      <span class="chip" id="demoChip" style="display:none">🎬 <b>DEMO</b> · scripted sample, not a real order</span>
       <button class="btn yellow" id="rerunBtn" type="button" style="padding:8px 12px;font-size:13px;margin-left:auto">▶ Re-run</button>
     </div>
 
@@ -682,6 +712,25 @@
 
 </main>
 
+<!-- ===================== VENUE WALL MODE (?wall=1 / #wall) ===================== -->
+<!-- Chromeless, no-nav, auto-playing muted loop of every delivered trailer for the
+     physical TV at the event. Survives hours unattended (retry fetch, loop forever). -->
+<div id="wall" class="wall" aria-hidden="true">
+  <div class="wall-stage">
+    <video id="wallVid" class="wall-vid" muted playsinline autoplay preload="auto"></video>
+    <div class="wall-scrim"></div>
+    <div class="wall-onair"><span class="d"></span>ON AIR · BUILDATHON TV</div>
+    <div class="wall-lower">
+      <div class="wall-name" id="wallName">Buildathon TV</div>
+      <div class="wall-tag" id="wallTag">Every founder's launch, premiering live</div>
+    </div>
+    <div class="wall-claim">
+      <img id="wallQr" class="wall-qr" alt="Scan to make your own launch trailer">
+      <div class="wall-claim-cap">Make your own in minutes<br><b>launchreel.pages.dev</b></div>
+    </div>
+  </div>
+</div>
+
 <div id="confetti" aria-hidden="true"></div>
 <div id="payModal" style="display:none;position:fixed;inset:0;background:rgba(20,15,5,.55);z-index:60;align-items:center;justify-content:center;padding:20px">
   <div role="dialog" aria-modal="true" aria-label="Pay by UPI" style="background:#FFFDF5;border:3px solid #111;border-radius:16px;box-shadow:8px 8px 0 #111;max-width:360px;width:100%;padding:22px;text-align:center">
@@ -741,6 +790,16 @@
         // Real status drives the dashboard stage lights (theater is suppressed
         // in live mode); only fire the stage/feed on an actual transition.
         if(state.liveDriven){
+          // Keep the order bar / delivery header on the REAL product (matters
+          // most when resuming via a #job= permalink, where intake never ran).
+          if(r.job.productName){
+            var obn=document.getElementById('obName'); if(obn) obn.textContent=r.job.productName;
+            var dvn=document.getElementById('dvName'); if(dvn) dvn.textContent=r.job.productName;
+          }
+          if(r.job.tier){
+            var obt=document.getElementById('obTier');
+            if(obt) obt.textContent=({teaser:'Free teaser',trailer:'₹999 Launch Trailer',pack:'₹2,999 Content Pack'}[r.job.tier]||obt.textContent);
+          }
           if(s !== state.liveStage){
             applyRealStatus(s);
             pushLiveFeed(s);
@@ -850,7 +909,8 @@
     liveDriven: false,          // true once a real order is placed → real status wins
     liveStage : null,           // last real status applied (transition detection)
     liveDeliveredShown: false,  // auto-advance to delivery only once
-    deliveredVideo: null        // {videoUrl, posterUrl, name} once the real cut lands
+    deliveredVideo: null,       // {videoUrl, posterUrl, name} once the real cut lands
+    demoMode: false             // dashboard is showing the scripted sample, not a real order
   };
 
   /* ---------------------------------------------------------------
@@ -1167,10 +1227,13 @@
   async function runPipeline(){
     var myId = ++state.pipeline.runId;
     // Theater (simulate / re-run): drop out of live mode so real-status polling
-    // doesn't fight the simulated stage.
+    // doesn't fight the simulated stage, and flag the board as DEMO so a real
+    // customer never mistakes the scripted sample for their own order.
     state.liveDriven = false;
+    state.demoMode = true;
     clearInterval(livePollTimer);
     document.getElementById('liveChip').style.display = 'none';
+    document.getElementById('demoChip').style.display = '';
     document.getElementById('liveBanner').classList.remove('show');
     resetPipeline();
     go('dashboard');
@@ -1667,15 +1730,9 @@
     apiPost('/api/order', { email:email, productName:name, oneLiner:one, url:url||undefined, tier:TIER_API[state.tier] })
       .then(function(r){
         // Real order: the live Convex job — not the theater — drives the board.
-        state.jobId=r.jobId;
-        state.liveDriven=true; state.liveStage=null; state.liveDeliveredShown=false;
-        state.deliveredVideo=null;
-        var pl=$('#player'), rv=pl.querySelector('video.real-vid');
-        if(rv) rv.remove(); pl.classList.remove('has-video');
         toast('🧾 Order '+String(r.jobId).slice(-6)+' placed — crew starting!');
-        go('dashboard');
-        resetPipeline();
-        pollLiveStatus(r.jobId);
+        try{ location.hash = 'job=' + r.jobId; }catch(e){}   // resumable permalink
+        startLiveJob(r.jobId);
       })
       .catch(function(err){ toast('😖 Order failed: '+esc(err.message)+' — try again or find us at the table'); })
       .finally(function(){ btn.disabled=false; btn.textContent='🚀 Make my trailer'; });
@@ -1685,10 +1742,90 @@
   ['#pName','#pOne'].forEach(function(sel){ $(sel).addEventListener('input',syncOrderBar); });
 
   /* ---------------------------------------------------------------
+     LIVE JOB START + RESUMABLE PERMALINK (#job=<id>)
+     --------------------------------------------------------------- */
+  // Enter live mode for a real Convex job: real status drives the board (no
+  // theater), delivery player resets. Shared by the order path and #job resume.
+  function startLiveJob(jobId){
+    state.jobId=jobId;
+    state.liveDriven=true; state.liveStage=null; state.liveDeliveredShown=false;
+    state.deliveredVideo=null; state.demoMode=false;
+    var pl=$('#player'), rv=pl.querySelector('video.real-vid');
+    if(rv) rv.remove(); pl.classList.remove('has-video');
+    document.getElementById('demoChip').style.display='none';
+    go('dashboard');
+    resetPipeline();
+    pollLiveStatus(jobId);
+  }
+
+  /* ---------------------------------------------------------------
+     VENUE WALL MODE (?wall=1 / #wall) — chromeless auto-loop
+     --------------------------------------------------------------- */
+  function wallRequested(){
+    try{
+      if(/(^|[?&])wall=1(&|$)/.test(location.search)) return true;
+      if(/^#?wall\b/.test(location.hash||'')) return true;
+    }catch(e){}
+    return false;
+  }
+  function initWall(){
+    var wall=document.getElementById('wall');
+    document.body.classList.add('wall-on');
+    wall.classList.add('on'); wall.setAttribute('aria-hidden','false');
+    document.getElementById('wallQr').src = QR_DATAURI;
+    var vid=document.getElementById('wallVid');
+    var nameEl=document.getElementById('wallName'), tagEl=document.getElementById('wallTag');
+    var playlist=[], idx=0;
+    function paint(){ var c=playlist[idx]||{}; nameEl.textContent=c.name||'Buildathon TV'; tagEl.textContent=c.tag||''; }
+    function playCurrent(){
+      var c=playlist[idx]; if(!c) return;
+      if(c.posterUrl) vid.setAttribute('poster',c.posterUrl); else vid.removeAttribute('poster');
+      if(vid.getAttribute('src')!==c.videoUrl) vid.setAttribute('src', c.videoUrl);
+      vid.muted=true;
+      var p=vid.play(); if(p && p.catch) p.catch(function(){});
+      paint();
+    }
+    function advance(){ if(!playlist.length) return; idx=(idx+1)%playlist.length; playCurrent(); }
+    vid.addEventListener('ended', advance);
+    vid.addEventListener('error', function(){ setTimeout(advance, 1500); });
+    // Stall guard: if playback freezes ~8s while not paused, skip on — a single
+    // bad asset must never freeze the wall for hours.
+    var lastT=-1, stall=0;
+    setInterval(function(){
+      if(vid.paused || !playlist.length) return;
+      if(Math.abs(vid.currentTime-lastT)<0.05){ if(++stall>=8){ stall=0; advance(); } } else stall=0;
+      lastT=vid.currentTime;
+    }, 1000);
+    function load(){
+      apiPost('/api/tv', {}).then(function(r){
+        var jobs=(r&&r.jobs)||[];
+        var next=jobs.filter(function(j){return j.videoUrl;}).map(function(j){
+          return {name:j.productName||'Untitled', tag:j.oneLiner||'', videoUrl:j.videoUrl, posterUrl:j.posterUrl||''};
+        });
+        if(next.length){
+          var wasEmpty=!playlist.length;
+          playlist=next;
+          if(idx>=playlist.length) idx=0;
+          if(wasEmpty) playCurrent();     // start the loop once inventory arrives
+        }
+      }).catch(function(){ /* keep looping; boot-retry below re-tries */ });
+    }
+    load();
+    setInterval(load, 60000);             // pick up newly-approved premieres
+    var boot=setInterval(function(){ if(playlist.length) clearInterval(boot); else load(); }, 5000);
+  }
+
+  /* ---------------------------------------------------------------
      INIT
      --------------------------------------------------------------- */
   renderGuide();
   syncOrderBar();
+  // Route: wall mode, or a resumable job permalink, else the normal intake app.
+  (function route(){
+    if(wallRequested()){ initWall(); return; }
+    var m=(location.hash||'').match(/^#job=([A-Za-z0-9_-]+)/);
+    if(m && CONVEX_SITE_URL){ startLiveJob(m[1]); }
+  })();
 })();
 </script>
 </body>
