@@ -68,8 +68,8 @@ const Card: React.FC<{ index: number; activeStart: number }> = ({ index, activeS
         {/* rule */}
         <div style={{ opacity: textOp, width: 300, height: 3, background: INK, margin: "26px 0 22px" }} />
         {/* credential one-liner */}
-        <div style={{ opacity: textOp, fontFamily: FONT_SANS, fontStyle: "italic", fontSize: 34, color: "#3b332440", position: "relative" }}>
-          <span style={{ color: "#463b26" }}>&ldquo;{line.credential}&rdquo;</span>
+        <div style={{ opacity: textOp, fontFamily: FONT_SANS, fontStyle: "italic", fontSize: 34, color: "#463b26" }}>
+          &ldquo;{line.credential}&rdquo;
         </div>
 
         {/* bottom index, centered */}

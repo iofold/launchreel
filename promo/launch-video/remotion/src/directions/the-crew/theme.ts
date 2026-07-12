@@ -5,9 +5,15 @@ import { loadFont as loadArchivo } from "@remotion/google-fonts/Archivo";
 import { loadFont as loadDMMono } from "@remotion/google-fonts/DMMono";
 import { COLORS } from "../../lib/brand";
 
-export const FONT_DISPLAY = loadArchivoBlack().fontFamily; // huge crew names
-export const FONT_SANS = loadArchivo().fontFamily; // roles / body
-export const FONT_MONO = loadDMMono().fontFamily; // dossier / stamps / index
+const w = (weights: string[], styles?: string[]) => ({
+  weights,
+  subsets: ["latin"] as string[],
+  ignoreTooManyRequestsWarning: true,
+  ...(styles ? { styles } : {}),
+});
+export const FONT_DISPLAY = loadArchivoBlack("normal", w(["400"])).fontFamily; // huge crew names
+export const FONT_SANS = loadArchivo("normal", w(["400", "700"])).fontFamily; // roles / body
+export const FONT_MONO = loadDMMono("normal", w(["400", "500"])).fontFamily; // dossier / stamps / index
 
 // Manila-folder tan (hook prop only — not a brand surface).
 export const MANILA = "#E9CE9A";

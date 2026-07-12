@@ -167,13 +167,19 @@ function buildFunctionPatterns(version: number): { modules: Grid; isFn: boolean[
         for (let dx = -2; dx <= 2; dx++)
           set(ax + dx, ay + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
     }
-  // Reserve format-info areas + dark module (values written after mask is chosen).
-  for (let i = 0; i <= 8; i++) {
-    set(8, i, false);
-    set(i, 8, false);
-    set(8, size - 1 - i, false);
-    set(size - 1 - i, 8, false);
-  }
+  // Reserve *exactly* the format-info cells (mark function, don't clobber timing at
+  // index 6 or over-reserve data cells) — values are written later by drawFormat().
+  const reserve = (x: number, y: number) => {
+    isFn[y][x] = true;
+    if (modules[y][x] === -1) modules[y][x] = 0;
+  };
+  for (let i = 0; i <= 5; i++) reserve(8, i);
+  reserve(8, 7);
+  reserve(8, 8);
+  reserve(7, 8);
+  for (let i = 9; i < 15; i++) reserve(14 - i, 8);
+  for (let i = 0; i < 8; i++) reserve(size - 1 - i, 8);
+  for (let i = 8; i < 15; i++) reserve(8, size - 15 + i);
   set(8, size - 8, true); // always-dark module
 
   return { modules, isFn, size };

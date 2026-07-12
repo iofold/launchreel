@@ -4,9 +4,11 @@ import { loadFont as loadInter } from "@remotion/google-fonts/Inter";
 import { loadFont as loadArchivo } from "@remotion/google-fonts/ArchivoBlack";
 
 // Big broadcast display face, plus a heavy UI face and a legible UI body.
-export const ANTON = `${loadAnton().fontFamily}, 'Arial Narrow', sans-serif`;
-export const ARCHIVO = `${loadArchivo().fontFamily}, system-ui, sans-serif`;
-export const INTER = `${loadInter().fontFamily}, system-ui, sans-serif`;
+// Load only the weights/subsets actually used to keep font fetches cheap.
+const opt = (weights: string[]) => ({ weights, subsets: ["latin"], ignoreTooManyRequestsWarning: true });
+export const ANTON = `${loadAnton("normal", opt(["400"])).fontFamily}, 'Arial Narrow', sans-serif`;
+export const ARCHIVO = `${loadArchivo("normal", opt(["400"])).fontFamily}, system-ui, sans-serif`;
+export const INTER = `${loadInter("normal", opt(["600", "700", "800", "900"])).fontFamily}, system-ui, sans-serif`;
 
 // Absolute frame map for the 30s / 900f cut. [startInclusive, endExclusive).
 export const T = {
