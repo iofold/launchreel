@@ -1,0 +1,6 @@
+node_modules/
+out/
+.bundle/
+public/jobs/
+*.err
+err.log

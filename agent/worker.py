@@ -105,7 +105,7 @@ def notify(job: dict, template: str) -> None:
     to = job.get("email")
     if not to:
         return
-    web = os.environ.get("WEB_BASE_URL", "https://launchreel.tv").rstrip("/")
+    web = os.environ.get("WEB_BASE_URL", "https://launchreel.pages.dev").rstrip("/")
     data = {
         "productName": job.get("productName"),
         "tier": job.get("tier"),

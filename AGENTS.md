@@ -13,7 +13,12 @@ Launch Trailer · ₹2,999 Content Pack.
 - `web/` — customer app (Cloudflare Pages, single file): intake → agent-org dashboard →
   delivery → Buildathon TV. Demo mode when `window.CONVEX_SITE_URL` is unset.
 - `agent/worker.py` — pipeline worker (claim → research → storyboard → voiceover →
-  rendering → awaiting_approval). Scale via compose `--scale worker=N`.
+  rendering → awaiting_approval). Scale via compose `--scale worker=N`. Sends the
+  order-confirmation email at claim (`notify` → `skills/email-channel`).
+- `skills/email-channel/` — the primary customer channel. Outbound via Resend
+  (verified `updates.iofold.com`): `order_confirmation` + `delivered` templates in
+  `scripts/send-email.ts`. Inbound via Cloudflare Email Routing: `reel@ctxmill.com`
+  → `workers/email-inbound/` → Convex `/api/email/inbound`. Profiles: `docs/email-profiles.md`.
 - `ops/hermes/` — contained Hermes stack (gateway + worker pool + dashboard). See its
   README for the parallelism model.
 - `skills/` — the generation stack. Read the relevant SKILL.md before generating:
