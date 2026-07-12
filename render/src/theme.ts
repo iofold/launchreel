@@ -2,9 +2,10 @@ import type { BrandColors } from "./schema";
 
 /**
  * Brand theme helpers. The renderer never invents brand identity — it takes the
- * required {bg, accent, ink} and fills a small "pop" palette, deriving any missing
- * accents from the primary by hue rotation so every trailer stays on-brand while
- * still getting the multi-color neo-brutalist LaunchReel look.
+ * required {bg, accent, ink} and fills a small "pop" palette. Missing accents are
+ * derived as palette-SAFE tints/shades/mixes of the provided accents and ink/bg
+ * (never hue-rotated into a new hue), so every scene background stays on-brand.
+ * Brands that DO supply 4 accents still get the full multi-color LaunchReel look.
  */
 
 // ---- tiny color math (hex <-> hsl) ----
@@ -65,6 +66,36 @@ export function isDark(hex: string): boolean {
 export function readableOn(fill: string, ink: string, paper: string): string {
   return isDark(fill) ? paper : ink;
 }
+/** Linear RGB blend of two hex colors; amt=0 → a, amt=1 → b. Preserves brand hue
+ * when b is a neutral (ink/paper/bg); yields an in-family blend between two accents. */
+function mix(a: string, b: string, amt: number): string {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  const k = Math.max(0, Math.min(1, amt));
+  return rgbToHex(ar + (br - ar) * k, ag + (bg - ag) * k, ab + (bb - ab) * k);
+}
+/** Smallest separation between two hues, in degrees (0..180). */
+function hueDist(a: number, b: number): number {
+  const d = Math.abs((((a - b) % 360) + 360) % 360);
+  return d > 180 ? 360 - d : d;
+}
+/**
+ * Guard: keep a color inside the brand palette. Near-neutral colors (low
+ * saturation — tints/shades of ink or bg) always pass. A saturated color passes
+ * only if its hue sits near a provided accent; otherwise it is an invented
+ * off-brand hue and gets pulled back onto the nearest accent. Backstops the
+ * palette-safe derivation below so scene backgrounds can never drift off-brand.
+ */
+function brandSafe(hex: string, accents: string[], ink: string): string {
+  const [h, s] = rgbToHsl(...hexToRgb(hex));
+  if (s < 0.22) return hex;
+  const hues = accents.map((a) => rgbToHsl(...hexToRgb(a))[0]);
+  let nearest = 0;
+  for (let i = 1; i < hues.length; i++) {
+    if (hueDist(h, hues[i]) < hueDist(h, hues[nearest])) nearest = i;
+  }
+  return hueDist(h, hues[nearest]) <= 40 ? hex : mix(hex, accents[nearest], 0.6);
+}
 
 export interface Theme {
   bg: string;
@@ -79,23 +110,32 @@ export interface Theme {
 
 export function makeTheme(c: BrandColors): Theme {
   const paper = c.paper ?? "#FFFDF4";
-  // Build the pop palette: use provided extras first, then derive by hue rotation.
+  // The colors the customer actually gave us — the only hues allowed on screen.
   const provided = [c.accent, c.accent2, c.accent3, c.accent4].filter(Boolean) as string[];
+  // A second color to build from: accent2 if supplied, else a deep shade of the
+  // primary (mixed toward ink) — never an invented hue.
+  const secondary = c.accent2 ?? mix(c.accent, c.ink, 0.45);
+  // Fill any missing pop slots with palette-SAFE variants: tints/shades/mixes of
+  // the provided accents and ink/paper. No hue rotation → no off-brand neon.
   const derived = [
-    c.accent,
-    rotate(c.accent, 150, 0.05),
-    rotate(c.accent, 45, 0.1),
-    rotate(c.accent, 210, 0),
-    rotate(c.accent, 300, 0.05),
+    c.accent, // primary
+    secondary, // secondary accent (or deep primary)
+    mix(c.accent, paper, 0.32), // light tint of primary
+    mix(secondary, c.ink, 0.3), // deep shade of secondary (used as a scene bg)
+    mix(c.accent, secondary, 0.5), // primary↔secondary blend (used as a scene bg)
   ];
   const pop: string[] = [];
   for (let i = 0; i < 5; i++) pop.push(provided[i] ?? derived[i] ?? c.accent);
+  // Guard: every pop color — some are full scene backgrounds — must stay on a
+  // brand hue. Provided accents pass untouched; only stray hues get corrected.
+  const accents = provided.length ? provided : [c.accent];
+  const safePop = pop.map((col) => brandSafe(col, accents, c.ink));
   return {
     bg: c.bg,
     paper,
     ink: c.ink,
     accent: c.accent,
-    pop,
+    pop: safePop,
     shadow: c.ink,
     border: `4px solid ${c.ink}`,
   };

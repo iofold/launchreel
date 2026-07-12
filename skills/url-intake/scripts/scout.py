@@ -221,6 +221,69 @@ def _ok_png(path: str) -> bool:
         return False
 
 
+# Runs in the page before every screenshot: click a cookie-consent "accept"
+# control if present (this dismisses the banner AND sets the CMP cookie, so it
+# stays gone on reload), then hide any leftover consent chrome + fixed bottom
+# banners, and scroll to the top so viewport shots frame the hero, not a crop.
+_OVERLAY_JS = r"""
+(() => {
+  const norm = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
+  // Most specific phrasing first so "accept all" wins over a bare "ok".
+  const LABELS = ["accept all cookies", "allow all cookies", "accept all",
+    "allow all", "accept cookies", "allow cookies", "i accept", "i agree",
+    "accept", "agree", "got it", "allow", "ok", "okay"];
+  const nodes = Array.from(document.querySelectorAll(
+    'button, a, [role="button"], input[type="button"], input[type="submit"]'));
+  const textOf = (el) => norm(el.innerText || el.value || el.getAttribute("aria-label"));
+  for (const want of LABELS) {
+    const hit = nodes.find((el) => {
+      const vis = el.offsetParent !== null || getComputedStyle(el).position === "fixed";
+      return vis && textOf(el) === want;
+    });
+    if (hit) { try { hit.click(); } catch (e) {} break; }
+  }
+  // Hide leftover consent chrome by id/class keyword.
+  const st = document.createElement("style");
+  st.setAttribute("data-scout-overlay", "1");
+  st.textContent =
+    '[id*="cookie" i],[class*="cookie" i],[id*="consent" i],' +
+    '[class*="consent" i],[class*="gdpr" i]{display:none !important;}';
+  document.documentElement.appendChild(st);
+  // Hide fixed/sticky full-width banners pinned to the bottom of the viewport.
+  const vh = window.innerHeight, vw = window.innerWidth;
+  for (const el of Array.from(document.body.querySelectorAll("*"))) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== "fixed" && cs.position !== "sticky") continue;
+    const r = el.getBoundingClientRect();
+    if (r.bottom >= vh - 4 && r.top > vh * 0.4 && r.width >= vw * 0.55) {
+      el.style.setProperty("display", "none", "important");
+    }
+  }
+  window.scrollTo(0, 0);
+  return true;
+})()
+""".strip()
+
+
+def dismiss_overlays(session: str, env: dict) -> None:
+    """Best-effort cookie/consent teardown before a screenshot. Never raises —
+    a clean shot is preferred but a failure here must not abort the capture."""
+    try:
+        proc = subprocess.run(
+            ["agent-browser", "eval", "--stdin", "--session", session],
+            input=_OVERLAY_JS,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+        if proc.returncode == 0:
+            # let a click-driven banner teardown / reflow settle before the shot
+            ab(session, "wait", "600", env=env, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def take_screenshots(url: str, out_dir: str, session: str) -> tuple[list[dict], list[str]]:
     """Capture desktop hero / full-page / mobile PNGs. Returns (shots, warnings).
 
@@ -258,6 +321,7 @@ def take_screenshots(url: str, out_dir: str, session: str) -> tuple[list[dict], 
                 warnings.append(f"{name}: navigation failed: {nav.stderr.strip()[:160]}")
                 continue
             ab(session, "wait", "2600", env=env, timeout=20)  # let entrance animations / fonts settle
+            dismiss_overlays(session, env)  # clear cookie/consent banners; frame the hero
             path = os.path.join(out_dir, f"{name}.png")
             shot_args = ["screenshot"] + (["--full"] if full else []) + [path]
             shot = ab(session, *shot_args, env=env, timeout=90)
@@ -358,6 +422,8 @@ def main() -> int:
         return 1
 
     url = args.url.strip()
+    if url and "://" not in url:
+        url = "https://" + url  # bare domains break urllib in fallback paths
     out_dir = os.path.abspath(args.out_dir)
     os.makedirs(out_dir, exist_ok=True)
     session = args.session or ("scout-" + os.path.basename(out_dir.rstrip("/")) or "scout")
