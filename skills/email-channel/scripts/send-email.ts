@@ -597,6 +597,56 @@ function previewReady(d: Data): Rendered {
   return { subject, html: shell(`Your ${product} cut is ready`, body), text };
 }
 
+// Style Lab: after delivery, invite the customer to react to six candidate
+// trailer styles and pick which one we build into a premium template next.
+// Data: { productName?, studioUrl (artifact link, ideally with ?e=<email>) }.
+function styleLab(d: Data): Rendered {
+  const product = d.productName || "your launch";
+  const url = d.studioUrl || d.dashboardUrl || "";
+  const subject = "You pick our next style 🎬 (6 wild directions, 60 seconds)";
+
+  const body = `
+    <h1 style="margin:0 0 8px;font:800 24px/1.25 'Trebuchet MS',Verdana,sans-serif;color:${BRAND.ink};">
+      Help us pick our next look. 🎬</h1>
+    <p style="margin:0 0 14px;font:400 15px/1.7 Verdana,sans-serif;color:${BRAND.ink};">
+      We just cut your <b>${esc(product)}</b> trailer in one style — but we've been
+      building <b style="color:${BRAND.accent};">six wildly different directions</b> we're
+      thinking of offering as premium styles. Before we lock them in, we want <i>your</i> eye.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+      style="margin:6px 0 4px;background:${BRAND.bg};border:1px solid ${BRAND.border};border-radius:12px;">
+      <tr><td style="padding:14px 16px;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+        <b style="color:${BRAND.ink};">60 seconds, on your phone</b><br>
+        Watch each 30-second style, tap what you love (🔥 / 👍 / 😐), and pick the ONE
+        we should build first. Your progress saves as you go — no account, no forms.
+      </td></tr>
+    </table>
+    ${url ? button(url, "Watch the 6 styles →") : ""}
+    <p style="margin:16px 0 0;font:400 13px/1.6 Verdana,sans-serif;color:${BRAND.muted};">
+      The style you pick goes to the front of the line to become a real, selectable
+      template. Thanks for shaping what LaunchReel builds next.</p>
+  `;
+
+  const text = [
+    `Help us pick our next look.`,
+    ``,
+    `We just cut your ${product} trailer in one style — but we've been building six`,
+    `wildly different directions we're thinking of offering as premium styles. Before`,
+    `we lock them in, we want your eye.`,
+    ``,
+    `60 seconds, on your phone: watch each 30-second style, tap what you love`,
+    `(fire / thumbs-up / meh), and pick the ONE we should build first. Your progress`,
+    `saves as you go — no account, no forms.`,
+    url ? `\nWatch the 6 styles: ${url}` : "",
+    ``,
+    `The style you pick goes to the front of the line to become a real, selectable`,
+    `template. Thanks for shaping what LaunchReel builds next.`,
+    ``,
+    `— LaunchReel`,
+  ].filter((l) => l !== null && l !== undefined).join("\n");
+
+  return { subject, html: shell(`Pick our next LaunchReel style — 6 directions, 60 seconds`, body), text };
+}
+
 // Generic branded reply — used for the feedback-loop edge cases (no matching
 // order, or an escalation to a human). Caller supplies subject/heading/body.
 function reply(d: Data): Rendered {
@@ -635,6 +685,7 @@ const TEMPLATES: Record<string, (d: Data) => Rendered> = {
   need_info: needInfo,
   storyline,
   preview_ready: previewReady,
+  style_lab: styleLab,
   reply,
 };
 

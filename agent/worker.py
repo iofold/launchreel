@@ -22,9 +22,10 @@ swappable (see agent/ + skills/ in this repo):
   rendering  -> render/scripts/render.sh             (trailer.mp4 + poster.png)
                eval/scripts/frame-qa.py              (vision-rig stills gate)
                agent/deliver.py                      (R2 upload + awaiting_approval)
-An auto-fail vision verdict marks the job failed (re-render is manual today).
-The approval gate (awaiting_approval -> delivered) is a separate operator tap:
-agent/approve.py.
+On an auto-fail vision verdict the render stage runs ONE rubric-driven auto-fix
+(agent/fixpass.py) and re-renders (bounded by MAX_RENDER_ATTEMPTS); a second
+auto-fail escalates to a human via the `quality_hold` email. The approval gate
+(awaiting_approval -> delivered) is a separate operator tap: agent/approve.py.
 """
 import json
 import os

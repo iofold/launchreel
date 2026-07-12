@@ -134,8 +134,17 @@ http.route({
       }
     }
     const cleanTopPick = STYLES.includes(topPick) ? topPick : undefined;
+    const emailStr = typeof email === "string" ? email.slice(0, 200) : undefined;
+    const hasEmail = !!emailStr && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailStr.trim());
+    // Drop empty/garbage POSTs (bots or health-checks hitting this open endpoint)
+    // so they don't create hollow style_feedback events. A real submit always
+    // carries at least one rating, a top pick, or an email; the client also gates
+    // submit on that. Return ok so callers don't retry.
+    if (Object.keys(clean).length === 0 && !cleanTopPick && !hasEmail) {
+      return json({ ok: true, skipped: "empty" });
+    }
     const result = await ctx.runMutation(api.orders.logStyleFeedback, {
-      email: typeof email === "string" ? email.slice(0, 200) : undefined,
+      email: emailStr,
       ratings: clean,
       topPick: cleanTopPick,
       source: typeof source === "string" ? source.slice(0, 40) : "style_lab",

@@ -355,10 +355,12 @@ def main() -> int:
         a = score_one(va, args.a_label, key, args.model, args.frames, brand, args.tier, args.a_url)
         b = score_one(vb, args.b_label, key, args.model, args.frames, brand, args.tier, args.b_url)
 
-    why_pass = comparative_why(a, b, args.a_label, args.b_label,
-                               fq.STILL_DIMS if has_brand else BRAND_AGNOSTIC_DIMS,
-                               args.model, key)
-    result = assemble(a, b, args.a_label, args.b_label, has_brand, why_pass)
+    scored_dims, mean_a, mean_b, overall_winner = compute_overall(a, b, has_brand)
+    winner_label = args.a_label if overall_winner == "A" else args.b_label if overall_winner == "B" else "Tie"
+    why_pass = comparative_why(a, b, args.a_label, args.b_label, scored_dims,
+                               mean_a, mean_b, winner_label, args.model, key)
+    result = assemble(a, b, args.a_label, args.b_label, has_brand,
+                      scored_dims, mean_a, mean_b, overall_winner, why_pass)
     result["usage"] = {
         "a": a.get("usage", {}), "b": b.get("usage", {}),
         "comparative": why_pass.get("_usage", {}),
