@@ -1,0 +1,142 @@
+{
+  "$schema_note": "LaunchReel journey eval set. Each case is a real YC Summer-2026 company. This file doubles as the pre-render hero set for the Buildathon-TV / 'we already made your launch trailer' stunt. Difficulty 'hero' = strong marketing site, safe to pre-render and show off; 'hard' = extraction-hostile site that stress-tests Scout. Source: https://yc-oss.github.io/api/batches/summer-2026.json (92 companies, verified live 2026-07-12). fetch_signals were captured with a plain curl -L (no JS render) on 2026-07-12 and are the evidence behind difficulty.",
+  "source": {
+    "api": "https://yc-oss.github.io/api/batches/summer-2026.json",
+    "batch": "Summer 2026",
+    "batch_size": 92,
+    "verified_live": "2026-07-12",
+    "record_fields_used": ["name", "website", "one_liner", "small_logo_thumb_url", "industry", "status"]
+  },
+  "selection_policy": {
+    "hero_count": 5,
+    "hard_count": 3,
+    "hero_rule": "Recognizable-ish name + visually strong marketing site that loaded 200 with rich content (large HTML, many <img>, og:image). These are the ones we pre-render for the TV stunt and DM first.",
+    "hard_rule": "Loads 200 but is extraction-hostile in a distinct way (near-empty page / JS-only SPA with no static imagery / image-heavy non-root homepage). These prove the pipeline degrades gracefully, not that it looks good.",
+    "excluded_on_purpose": "Isengard Industries (AI munitions, 8.6MB image-heavy) and Greypoint Industries (autonomous swarm warfare, 2.6KB sparse) technically fit hard-mode signals but were excluded: seeding a promotional launch-trailer pipeline — and the public YC-S26 TV gallery — with military-strike marketing content is out of scope for this stunt. Molagri, Coasty and Rise Reforming exercise the same three extraction failure modes without that."
+  },
+  "cases": [
+    {
+      "id": "hero-screenpipe",
+      "name": "screenpipe",
+      "website": "https://screenpipe.com",
+      "one_liner": "Capture how you work and turn that into agents",
+      "industry": "B2B",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/144e7207ec725036f43cc9a6b577a8320151e103.png",
+      "difficulty": "hero",
+      "fetch_signals": { "http": 200, "html_bytes": 282507, "img_count": 94, "og_image": true, "title": "screenpipe: Workflow Memory for AI Agents" },
+      "why_selected": "Most recognizable name in the batch — popular open-source project with a real developer following, so a founder seeing 'we already made your trailer' lands. Dense, polished marketing site (282KB, 94 images, og:image) gives Scout a strong logo, hero shots and real product UI to pull from. Dev-tool dark aesthetic diversifies the palette spread across the hero set.",
+      "expected_challenges": [
+        "Product-heavy site with real terminal/desktop UI screenshots — Real-UI truthfulness matters: Product Tour scenes must use the actual captured screenshots, not a hallucinated dashboard.",
+        "Likely dark theme; brand-fidelity check must confirm the trailer honors a dark palette rather than defaulting to a light template."
+      ]
+    },
+    {
+      "id": "hero-palette",
+      "name": "Palette",
+      "website": "https://palettetechnology.com/",
+      "one_liner": "An interactive AI video generation and editing platform",
+      "industry": "B2B",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/c4b357efedd6b75b24594234b97cea3bade805e0.png",
+      "difficulty": "hero",
+      "fetch_signals": { "http": 200, "html_bytes": 107825, "img_count": 22, "og_image": true, "title": "Palette — The creative engine for video" },
+      "why_selected": "On-the-nose demo case: Palette is itself an AI video-generation platform, so a LaunchReel trailer for a video company is the sharpest possible show-of-strength on the TV wall. Clean, colorful, design-forward site (107KB, 22 images) is the visual opposite of screenpipe and stresses brand-color fidelity.",
+      "expected_challenges": [
+        "Meta risk: a video-gen company will judge motion quality and eases the hardest — this is the case to hold to a 5 on Motion quality.",
+        "Colorful brand system; palette extraction must capture the accent(s) accurately or the brand-fidelity gap is obvious."
+      ]
+    },
+    {
+      "id": "hero-definite",
+      "name": "Definite",
+      "website": "https://www.usedefinite.com",
+      "one_liner": "The most accurate financial agents",
+      "industry": "B2B",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/ea163685b0ad74eaec6a19637a061cdb5e63acae.png",
+      "difficulty": "hero",
+      "fetch_signals": { "http": 200, "html_bytes": 379934, "img_count": 37, "og_image": true, "title": "Definite | Cut bank reporting time and cost" },
+      "why_selected": "Fintech/data product with dashboard and metric-dense product screenshots (380KB, 37 images) — the ideal case to exercise Product Tour A/B, metric counters, and the Real-UI truthfulness dimension (numbers and chart labels must be legible and true to the real UI).",
+      "expected_challenges": [
+        "Financial metrics on screen — any hallucinated or smeared number is an auto-fail on both text legibility and real-UI truthfulness.",
+        "Clean but restrained palette; brand fidelity is about typography and neutral tones, not a loud accent."
+      ]
+    },
+    {
+      "id": "hero-rex",
+      "name": "Rex",
+      "website": "https://www.rex.inc",
+      "one_liner": "AI Operations Partner for Enterprise Order to Cash",
+      "industry": "B2B",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/b14c16514ac7654483b96e54e1bf49a45714e8f6.png",
+      "difficulty": "hero",
+      "fetch_signals": { "http": 200, "html_bytes": 444622, "img_count": 47, "og_image": true, "title": "Rex | The AI operations partner for order-to-cash" },
+      "why_selected": "Polished enterprise-B2B marketing site (445KB, 47 images, og:image) with product UI and a clear value narrative — a straightforward 'this should look great' hero that tests whether the default pipeline produces a shippable enterprise-credible trailer.",
+      "expected_challenges": [
+        "Enterprise tone: VO/script must read credible-and-calm, not hypey — VO/audio-sync and tone are the risk here, not visuals.",
+        "Order-to-cash is abstract; Problem and Product Tour scenes must make a back-office workflow legible without inventing UI."
+      ]
+    },
+    {
+      "id": "hero-context-dev",
+      "name": "Context.dev",
+      "website": "https://context.dev",
+      "one_liner": "We give AI agents realtime web context.",
+      "industry": "B2B",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/fe20b06c889ed9f1a1b7d9b0ecf522c8e057d68b.png",
+      "difficulty": "hero",
+      "fetch_signals": { "http": 200, "html_bytes": 732714, "img_count": 68, "og_image": true, "title": "Context.dev: Web Scraping & Crawl API for AI Agents" },
+      "why_selected": "Richest page in the hero set (733KB, 68 images) and a clean developer-infrastructure brand — good for testing that Scout doesn't drown in a large page and still extracts the right logo, accent, and hero copy. Recognizable-ish in the AI-agent tooling scene.",
+      "expected_challenges": [
+        "Very large page — Scout's fetch/brief step must not truncate to boilerplate nav/footer and must find the real hero message.",
+        "Developer-API product with little consumer imagery; Product Tour scenes lean on code/API visuals that must render legibly (auto-fail if code text smears)."
+      ]
+    },
+    {
+      "id": "hard-molagri",
+      "name": "Molagri",
+      "website": "https://molagri.com",
+      "one_liner": "Biopesticides that are safe for humans and bees.",
+      "industry": "Industrials",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/73c2cb671f399e3f094f4caf701a63e06155fc4f.png",
+      "difficulty": "hard",
+      "fetch_signals": { "http": 200, "html_bytes": 1589, "img_count": 0, "og_image": true, "title": "Molagri | Precision Crop Protection" },
+      "why_selected": "Failure mode: near-empty homepage. 1.6KB of HTML, zero <img> tags — effectively a stealth splash page. Scout has almost nothing to extract beyond the tagline and og:image, so this proves the pipeline degrades gracefully (falls back to YC one-liner + logo + generated brand-locked b-roll) instead of producing garbage.",
+      "expected_challenges": [
+        "No real product UI exists — Product Tour scenes have nothing truthful to show; the correct behavior is abstract brand b-roll + concept framing, NOT a hallucinated dashboard (this case tests that the pipeline refuses to fake UI).",
+        "Only inputs are the one-liner, the YC logo, and an og:image; brand palette must be inferred from minimal signal.",
+        "Agriculture/biotech, not SaaS — the SaaS-motion templates must adapt or the trailer feels off-genre."
+      ]
+    },
+    {
+      "id": "hard-coasty",
+      "name": "Coasty",
+      "website": "http://coasty.ai/",
+      "one_liner": "The computer-use agent that doesn't break on real software. We will…",
+      "industry": "B2B",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/49c533e34b6c887207ac5683dd8dfab22709a458.png",
+      "difficulty": "hard",
+      "fetch_signals": { "http": 200, "html_bytes": 499075, "img_count": 0, "og_image": true, "title": "Coasty - #1 Computer-Use AI Agent", "notes": "Large page but 0 static <img> — JS-rendered SPA; final URL resolved to coasty.ai:443; YC one_liner is itself truncated ('We will…')." },
+      "why_selected": "Failure mode: JS-only SPA + malformed upstream metadata. 499KB of HTML but zero static images means a plain fetch sees no logo or hero shots — Scout MUST use the Cloudflare Browser Rendering screenshot path (renderJs) or it gets nothing. The YC one_liner arrives truncated ('We will…') and the site resolves via a quirky http→:443 redirect, so it also tests robustness to dirty inputs.",
+      "expected_challenges": [
+        "Static fetch yields no imagery — if the screenshot step is skipped or fails, brand fidelity and real-UI truthfulness both collapse; this is the case that validates the Cloudflare screenshot dependency.",
+        "Truncated one_liner from YC ('We will…') — the script/CTA must not print the ellipsis fragment verbatim; Scout's brief has to reconstruct a clean value prop.",
+        "http:// + :443 redirect quirk — intake URL normalization must not choke."
+      ]
+    },
+    {
+      "id": "hard-rise-reforming",
+      "name": "Rise Reforming",
+      "website": "https://rise-reforming.com/home",
+      "one_liner": "We turn waste gases into valuable supply-secure chemicals",
+      "industry": "Industrials",
+      "logo": "https://bookface-images.s3.amazonaws.com/small_logos/5b908857ac82ef0d2a3b793f89fa198298587f8a.png",
+      "difficulty": "hard",
+      "fetch_signals": { "http": 200, "html_bytes": 1981344, "img_count": 19, "og_image": true, "title": "Home | Rise Reforming", "notes": "Homepage lives at /home, not the domain root; 2MB page dominated by large images/video." },
+      "why_selected": "Failure mode: image-heavy, non-root homepage, hard-to-visualize domain. 2MB page whose content is mostly big photos of industrial equipment, and the real homepage is at /home rather than the bare domain. Tests that Scout follows to the actual homepage, doesn't blow its token/asset budget on 2MB of imagery, and can make climate-chemistry (a physically un-glamorous B2B-hardware domain) look like a launch.",
+      "expected_challenges": [
+        "Homepage is /home not / — if intake normalizes to the bare domain it may hit a thinner page; URL handling must preserve the path or discover the real homepage.",
+        "Heavy hero photography of plants/reactors, little UI — Product Tour scenes must lean on real photos/process diagrams, not a fake SaaS dashboard.",
+        "Chemical-process brand with muted industrial palette — motion and music must sell 'hard-tech credibility', a different register than the consumer-SaaS default."
+      ]
+    }
+  ]
+}
