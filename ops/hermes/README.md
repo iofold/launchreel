@@ -57,3 +57,106 @@ agent at `skills/`:
 
 Skills are vendored copies (this repo must be self-contained for judges); upstream
 originals live in the manifold repo.
+
+## Operating the gateway
+
+The gateway is the conversational operator: you send it a turn, it thinks with its
+configured model (`gpt-5.6-terra` via the `openai-api` provider) and acts with tools
+(bash, file I/O, the vendored `skills/`, the repo mounted at `/workspace/launchreel`).
+
+### Auth model (two schemes, one key)
+
+The gateway runs an HTTP API server on `127.0.0.1:8652`. The shared secret is
+`API_SERVER_KEY` from `ops/hermes/.env`. **Two surfaces, two header styles** — this is
+the thing that trips you up:
+
+| Surface | Path prefix | Auth header |
+|---|---|---|
+| OpenAI-compatible **agent** endpoint | `/v1/*` | `Authorization: Bearer $API_SERVER_KEY` |
+| Hermes **admin** endpoints | `/api/*` | `Authentication: $API_SERVER_KEY` |
+
+`GET /health` is unauthenticated. A bare `hermes` process inside the container talks to
+its model, not to this API server — the "Missing Authentication header" 401 is the
+model call failing, not the API server (see the gotcha below).
+
+### Run an agent turn against the gateway (primary path)
+
+The gateway exposes the **whole agent as an OpenAI model named `hermes-agent`**. POST a
+chat completion and it runs a full tool-using turn, then returns the final message.
+This is the path that shows up on the dashboard.
+
+```bash
+KEY=$(grep '^API_SERVER_KEY=' ops/hermes/.env | cut -d= -f2- | tr -d '"'\'' \r')
+curl -s http://127.0.0.1:8652/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"model":"hermes-agent","stream":false,
+       "messages":[{"role":"user","content":"Read AGENTS.md and list skills/."}]}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["choices"][0]["message"]["content"])'
+```
+
+A non-empty `content` with `finish_reason: "stop"` = success. If `content` is an error
+string and `finish_reason: "error"` (with a `"hermes"` error block), the turn reached
+the agent but the agent's own model/tool call failed.
+
+### One-shot / scriptable CLI turn (prints the full transcript)
+
+```bash
+docker exec -w /workspace/launchreel launchreel-gateway hermes -z "Reply with PONG."
+```
+
+CLI turns share the same `HERMES_HOME` (`/opt/data`), so they land in the same session
+store and kanban as the API turns.
+
+### Gotcha: "HTTP 401: Missing Authentication header" from the agent
+
+If a turn comes back with that error, the agent's **model** call is going out with no
+valid auth. Root cause seen here: `$HERMES_DATA_DIR/config.yaml` shipped with duplicate
+keys in the `model:` block — a leftover template `provider: "auto"` and
+`base_url: https://openrouter.ai/api/v1` **below** the intended `provider: openai-api`.
+YAML keeps the last duplicate, so the agent auto-detected OpenRouter and sent the OpenAI
+key to the wrong host. Fix: comment out the stray `provider:`/`base_url:` lines so the
+only live values are `default: gpt-5.6-terra` + `provider: openai-api`, then
+`docker restart launchreel-gateway`. Quick workaround without editing config:
+`hermes -z "…" --provider openai-api`.
+
+### Inspect the order book (read-only, worker secret)
+
+The gateway holds `WORKER_KEY` + `CONVEX_SITE_URL` in its env. Read-only endpoints:
+
+```bash
+# delivered-premieres feed (public)
+curl -s -X POST "$CONVEX_SITE_URL/api/tv" -H 'Content-Type: application/json' -d '{}'
+# feedback inbox (authenticated read)
+curl -s -X POST "$CONVEX_SITE_URL/api/worker/inbox" \
+  -H 'Content-Type: application/json' -H "X-Worker-Key: $WORKER_KEY" -d '{"limit":3}'
+```
+
+Mutating endpoints (`/api/worker/claim|update|revision|seed`) are the render pipeline —
+don't call them by hand.
+
+### Ops kanban board
+
+A `launchreel-ops` board mirrors the live job book (delivered → Done; awaiting-approval
+and failed → Blocked/needs_input so the dispatcher never auto-runs them):
+
+```bash
+docker exec launchreel-gateway hermes kanban boards list
+docker exec launchreel-gateway hermes kanban --board launchreel-ops list --status done
+docker exec launchreel-gateway hermes kanban --board launchreel-ops list --status blocked
+```
+
+Create tasks in a terminal state so the in-gateway dispatcher can't spawn a worker for
+them: `--initial-status blocked` then `complete` for done work, or
+`block <id> --kind needs_input "<reason>"` to pin a task in the human-gated column.
+
+### Observability / dashboard
+
+Every turn (API and CLI) is recorded in `$HERMES_DATA_DIR/state.db`. List them:
+
+```bash
+docker exec launchreel-gateway hermes sessions list
+```
+
+The session dashboard reads that same DB: https://launchreel-dash.dev1.ctxmill.com
+(password login, user `yash`), or `http://127.0.0.1:9129` on the box. `api_server`
+sessions are the HTTP turns; `cli` sessions are `hermes -z` runs.
