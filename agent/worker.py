@@ -14,10 +14,17 @@ Env:
   WORKER_ID         label for traces (default: hostname)
   POLL_SECONDS      idle poll interval (default 5)
 
-Pipeline hooks: each stage shells out to the corresponding skill script so the
-generation stack stays swappable (see skills/ in this repo). Stages that are
-not yet wired log-and-pass so the claim/status plumbing can be exercised
-end-to-end before the render blocks land.
+Pipeline hooks: each stage shells out to a script so the generation stack stays
+swappable (see agent/ + skills/ in this repo):
+  research   -> skills/url-intake/scripts/scout.py   (brief.json + screenshots)
+  storyboard -> agent/storyboard.py                  (storyboard.json + vo.txt)
+  voiceover  -> agent/voiceover.py                   (vo.mp3, wires audio.voPath)
+  rendering  -> render/scripts/render.sh             (trailer.mp4 + poster.png)
+               eval/scripts/frame-qa.py              (vision-rig stills gate)
+               agent/deliver.py                      (R2 upload + awaiting_approval)
+An auto-fail vision verdict marks the job failed (re-render is manual today).
+The approval gate (awaiting_approval -> delivered) is a separate operator tap:
+agent/approve.py.
 """
 import json
 import os
@@ -55,14 +62,53 @@ def log(job_id: str, msg: str) -> None:
     print(f"[{WORKER_ID}] {job_id[-6:] if job_id else '------'} {msg}", flush=True)
 
 
-def run_stage(job: dict, stage: str, cmd: list[str] | None) -> None:
-    """Run a stage's skill script if wired; log-and-pass otherwise."""
-    if not cmd:
-        log(job["jobId"], f"{stage}: not wired yet (pass-through)")
-        time.sleep(1)
-        return
-    log(job["jobId"], f"{stage}: {' '.join(cmd[:3])}…")
-    subprocess.run(cmd, check=True, cwd=REPO, timeout=1800)
+AGENT = os.path.join(REPO, "agent")
+STORYBOARD_PY = os.path.join(AGENT, "storyboard.py")
+VOICEOVER_PY = os.path.join(AGENT, "voiceover.py")
+DELIVER_PY = os.path.join(AGENT, "deliver.py")
+RENDER_SH = os.path.join(REPO, "render", "scripts", "render.sh")
+FRAME_QA_PY = os.path.join(REPO, "eval", "scripts", "frame-qa.py")
+
+
+def run_capture(job_id: str, label: str, cmd: list[str], timeout: int = 1800) -> subprocess.CompletedProcess:
+    """Run a stage command, streaming a short trace and capturing stdout/stderr.
+    Raises CalledProcessError on non-zero exit so process() can fail the job."""
+    log(job_id, f"{label}: {os.path.basename(cmd[0])} {' '.join(a for a in cmd[1:4])}…")
+    r = subprocess.run(cmd, cwd=REPO, timeout=timeout, capture_output=True, text=True)
+    if r.stderr.strip():
+        for line in r.stderr.strip().splitlines()[-6:]:
+            log(job_id, f"  {label}| {line}")
+    if r.returncode != 0:
+        raise subprocess.CalledProcessError(r.returncode, cmd, r.stdout, r.stderr)
+    return r
+
+
+def last_json(text: str) -> dict:
+    """Return the LAST top-level JSON object anywhere in stdout — handles both
+    compact one-line summaries (storyboard.py, deliver.py) and pretty-printed
+    multi-line ones (render.ts uses indent=2)."""
+    dec = json.JSONDecoder()
+    best: dict = {}
+    i, n = 0, len(text)
+    while i < n:
+        if text[i] == "{":
+            try:
+                obj, end = dec.raw_decode(text, i)
+            except ValueError:
+                i += 1
+                continue
+            if isinstance(obj, dict):
+                best = obj
+                i = end
+                continue
+        i += 1
+    return best
+
+
+def slug_for(job: dict) -> str:
+    base = (job.get("productName") or "job").lower()
+    base = "".join(c if c.isalnum() else "-" for c in base).strip("-") or "job"
+    return f"{base}-{job['jobId'][-6:]}"
 
 
 def _email_runtime() -> str | None:
@@ -118,22 +164,20 @@ def notify(job: dict, template: str) -> None:
     send_email(to, template, data)
 
 
-def stage_research(job: dict) -> None:
-    """URL-first intake: run Scout on the job's url, then attach the brief.
+def stage_research(job: dict, out_dir: str) -> None:
+    """URL-first intake: run Scout on the job's url into the job bundle dir, then
+    attach the brief.
 
     Best-effort — a Scout failure logs and passes so the pipeline keeps moving
     (the storyboard stage falls back to productName/oneLiner). Jobs with no url
-    keep the original log-and-pass behavior.
+    skip Scout; the bundle dir stays empty and storyboard.py uses the job fields.
     """
     jid = job["jobId"]
     url = job.get("url")
     if not url:
-        log(jid, "research: no url — pass-through")
-        time.sleep(1)
+        log(jid, "research: no url — storyboard will use job fields")
         return
 
-    out_dir = os.path.join(REPO, ".tmp", "scout", jid)
-    os.makedirs(out_dir, exist_ok=True)
     scout = os.path.join(REPO, "skills", "url-intake", "scripts", "scout.py")
     log(jid, f"research: scout {url}")
     try:
@@ -158,6 +202,115 @@ def stage_research(job: dict) -> None:
         log(jid, f"research: brief attach failed ({e}); continuing")
 
 
+def stage_render_and_deliver(job: dict, bundle_dir: str, storyboard_path: str) -> None:
+    """Render the deterministic trailer, run the vision rig, then deliver.
+
+    render.sh -> trailer.mp4 + poster.png. The vision rig (frame-qa.py) scores the
+    stills; an auto-fail verdict marks the job failed (re-render is manual today).
+    Otherwise deliver.py uploads to R2 and opens the approval gate."""
+    jid = job["jobId"]
+    slug = slug_for(job)
+    out_dir = os.path.join(REPO, "render", "out", slug)
+
+    r = run_capture(jid, "render",
+                    [RENDER_SH, "--storyboard", storyboard_path, "--assets", bundle_dir,
+                     "--out", out_dir, "--slug", slug], timeout=1800)
+    summary = last_json(r.stdout)
+    mp4 = summary.get("mp4") or os.path.join(out_dir, "trailer.mp4")
+    poster = summary.get("poster") or os.path.join(out_dir, "poster.png")
+    log(jid, f"render: {summary.get('renderSec','?')}s, {summary.get('mb','?')}MB, "
+             f"{summary.get('durationSec','?')}s trailer")
+    if not os.path.exists(mp4):
+        raise RuntimeError(f"render produced no mp4 at {mp4}")
+
+    # Vision rig (stills gate). GEMINI_API_KEY from env / hermes .env default.
+    verdict = run_vision_rig(job, bundle_dir, storyboard_path, mp4)
+    if verdict == "fail":
+        log(jid, "vision rig AUTO-FAIL — marking job failed (re-render is manual today)")
+        set_status(jid, "failed")
+        return
+    log(jid, f"vision rig verdict: {verdict} (advisory — pass/needs_human still goes to human gate)")
+
+    # Deliver: R2 upload + status -> awaiting_approval with videoUrl/posterUrl.
+    d = run_capture(jid, "deliver",
+                    [sys.executable, DELIVER_PY, "--job-id", jid, "--mp4", mp4, "--poster", poster],
+                    timeout=600)
+    delivered = last_json(d.stdout)
+    log(jid, f"deliver: video={delivered.get('videoUrl')}")
+    log(jid, f"deliver: poster={delivered.get('posterUrl')}")
+    if not delivered.get("convexUpdated"):
+        # deliver.py uploads even if the status update fails — ensure the gate is reached.
+        set_status(jid, "awaiting_approval",
+                   **{k: delivered[k] for k in ("videoUrl", "posterUrl") if delivered.get(k)})
+    log(jid, "at approval gate — operator runs agent/approve.py to deliver")
+
+
+def run_vision_rig(job: dict, bundle_dir: str, storyboard_path: str, mp4: str) -> str:
+    """Run eval/scripts/frame-qa.py and return its deterministic verdict
+    (pass|needs_human|fail). Best-effort: a rig failure returns 'needs_human' so a
+    human still reviews — it never blocks delivery on its own error."""
+    jid = job["jobId"]
+    tier = "free" if job.get("tier") == "teaser" else "paid"
+    scorecard = os.path.join(bundle_dir, "scorecard.json")
+    brand_json = write_brand_json(job, bundle_dir, storyboard_path)
+    expect_url = brand_display_url(storyboard_path) or (job.get("url") or "")
+    cmd = [sys.executable, FRAME_QA_PY, "--video", mp4, "--out", scorecard,
+           "--tier", tier, "--frames", "8"]
+    if expect_url:
+        cmd += ["--expect-url", expect_url]
+    if brand_json:
+        cmd += ["--brand-json", brand_json]
+    try:
+        r = run_capture(jid, "vision", cmd, timeout=300)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        log(jid, f"vision rig error ({e}); treating as needs_human")
+        return "needs_human"
+    card = last_json(r.stdout) if r.stdout.strip().endswith("}") else {}
+    if not card:
+        card = _read_json(scorecard) or {}
+    scores = card.get("scores", {})
+    if scores:
+        log(jid, "vision scores: " + "  ".join(
+            f"{d}={scores[d].get('score')}" for d in scores))
+    return card.get("verdict", "needs_human")
+
+
+def write_brand_json(job: dict, bundle_dir: str, storyboard_path: str) -> str | None:
+    """Ground-truth brand for the rig from the storyboard's brand block + brief tone."""
+    sb = _read_json(storyboard_path) or {}
+    brand = sb.get("brand") or {}
+    brief = _read_json(os.path.join(bundle_dir, "brief.json")) or {}
+    if not brand:
+        return None
+    data = {
+        "name": brand.get("name") or job.get("productName"),
+        "palette": brand.get("colors", {}),
+        "url": brand.get("url"),
+        "tone": brief.get("tone") or "",
+        "brandAdjectives": brief.get("brandAdjectives") or [],
+    }
+    path = os.path.join(bundle_dir, "brand.json")
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+        return path
+    except OSError:
+        return None
+
+
+def brand_display_url(storyboard_path: str) -> str:
+    sb = _read_json(storyboard_path) or {}
+    return ((sb.get("brand") or {}).get("url")) or ""
+
+
+def _read_json(path: str) -> dict | None:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
 def process(job: dict) -> None:
     jid = job["jobId"]
     log(jid, f"claimed: {job['productName']} ({job['tier']})")
@@ -166,40 +319,71 @@ def process(job: dict) -> None:
     # jobs have no owner email and are skipped inside notify().
     notify(job, "order_confirmation")
 
+    bundle_dir = os.path.join(REPO, ".tmp", "scout", jid)
+    os.makedirs(bundle_dir, exist_ok=True)
+    storyboard_path = os.path.join(bundle_dir, "storyboard.json")
+    vo_txt = os.path.join(bundle_dir, "vo.txt")
+    vo_mp3 = os.path.join(bundle_dir, "vo.mp3")
+
     # research (claim already set it) — Scout: Linkup fetch/search + screenshots
-    stage_research(job)
+    stage_research(job, bundle_dir)
 
-    set_status(jid, "storyboard")  # creative brief -> storyboard.json (fixed schema)
-    run_stage(job, "storyboard", None)
+    # storyboard — brief + scout bundle -> storyboard.json (validated) + vo.txt
+    set_status(jid, "storyboard")
+    run_capture(jid, "storyboard", [
+        sys.executable, STORYBOARD_PY, "--bundle-dir", bundle_dir,
+        "--product-name", job.get("productName") or "", "--one-liner", job.get("oneLiner") or "",
+        "--url", job.get("url") or "", "--tier", job.get("tier") or "teaser",
+        "--out", storyboard_path, "--vo-out", vo_txt,
+        "--meta-out", os.path.join(bundle_dir, "storyboard.meta.json"),
+    ], timeout=300)
 
-    set_status(jid, "voiceover")  # VO via ElevenLabs (coupon) / gpt-4o-mini-tts fallback
-    run_stage(job, "voiceover", None)
+    # voiceover — vo.txt -> vo.mp3 (ElevenLabs, OpenAI fallback); wires audio.voPath.
+    # Best-effort: a VO failure logs and continues (trailer renders without narration).
+    set_status(jid, "voiceover")
+    try:
+        run_capture(jid, "voiceover", [
+            sys.executable, VOICEOVER_PY, "--vo-txt", vo_txt, "--out", vo_mp3,
+            "--storyboard", storyboard_path,
+        ], timeout=300)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        log(jid, f"voiceover failed ({e}); rendering without narration")
 
-    set_status(jid, "rendering")  # Remotion comp + optional keyframe-pair Veo b-roll
-    run_stage(job, "rendering", None)
+    # rendering -> vision rig -> delivery (ends at awaiting_approval with URLs).
+    set_status(jid, "rendering")
+    stage_render_and_deliver(job, bundle_dir, storyboard_path)
 
-    set_status(jid, "awaiting_approval")  # human gate: builder taps approve
-    log(jid, "waiting at approval gate — gateway/operator advances to delivered")
-    # On approval -> delivered, send the delivery email. Kept commented until the
-    # approval flow exists and stamps videoUrl/posterUrl on the job:
-    #   notify({**job, "videoUrl": <url>, "posterUrl": <url>}, "delivered")
+
+def claim_and_process() -> bool:
+    """Claim one job and run it through the pipeline. Returns True if a job was
+    claimed (processed or failed), False if the queue was empty."""
+    job = api("/api/worker/claim", {"workerId": WORKER_ID}).get("job")
+    if not job:
+        return False
+    try:
+        process(job)
+    except Exception as e:  # noqa: BLE001 — fail the job, keep the worker alive
+        log(job["jobId"], f"FAILED: {e}")
+        set_status(job["jobId"], "failed")
+    return True
 
 
 def main() -> None:
     if not BASE or not KEY:
         sys.exit("CONVEX_SITE_URL and WORKER_KEY are required")
+    # Single-shot: claim + process exactly one job then exit (smoke / CI / the
+    # `prove it` run). `--once` or WORKER_ONCE=1.
+    once = "--once" in sys.argv or os.environ.get("WORKER_ONCE") == "1"
+    if once:
+        log("", f"worker single-shot -> {BASE}")
+        if not claim_and_process():
+            log("", "queue empty — nothing to do")
+        return
     log("", f"worker up (poll {POLL}s) -> {BASE}")
     while True:
         try:
-            job = api("/api/worker/claim", {"workerId": WORKER_ID}).get("job")
-            if not job:
+            if not claim_and_process():
                 time.sleep(POLL)
-                continue
-            try:
-                process(job)
-            except Exception as e:  # noqa: BLE001 — fail the job, keep the worker alive
-                log(job["jobId"], f"FAILED: {e}")
-                set_status(job["jobId"], "failed")
         except KeyboardInterrupt:
             raise
         except Exception as e:  # noqa: BLE001 — transient API errors: back off, retry

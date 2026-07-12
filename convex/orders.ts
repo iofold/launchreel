@@ -416,6 +416,32 @@ export const jobStatus = query({
   },
 });
 
+// Worker/operator lookup: full job + owner email, for the approval step
+// (approve.py needs the customer's email to send the `delivered` message).
+// Guarded at the HTTP layer (/api/worker/job, X-Worker-Key) — never exposed to
+// the public landing page. Returns null for an unknown job; email is null for a
+// seeded/unclaimed job (no owner yet).
+export const jobForWorker = query({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const j = await ctx.db.get(jobId);
+    if (!j) return null;
+    const email = j.userId ? (await ctx.db.get(j.userId))?.email ?? null : null;
+    return {
+      jobId: j._id,
+      email,
+      status: j.status,
+      tier: j.tier,
+      productName: j.productName,
+      oneLiner: j.oneLiner,
+      url: j.url ?? null,
+      videoUrl: j.videoUrl ?? null,
+      posterUrl: j.posterUrl ?? null,
+      updatedAt: j.updatedAt,
+    };
+  },
+});
+
 // Buildathon TV: delivered jobs, newest first.
 export const delivered = query({
   args: {},

@@ -246,6 +246,30 @@ http.route({
   }),
 });
 
+// Worker/operator lookup: full job + owner email (approve.py needs the email to
+// send the `delivered` message). Key-guarded, same shared secret as the pool.
+http.route({ path: "/api/worker/job", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/job",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    if (!body?.jobId) return json({ error: "jobId required" }, 400);
+    try {
+      const job = await ctx.runQuery(api.orders.jobForWorker, { jobId: body.jobId });
+      return json({ job });
+    } catch {
+      return json({ error: "unknown job" }, 404);
+    }
+  }),
+});
+
 // Worker research stage -> orders.attachBrief (Scout's brief.json onto the job).
 http.route({ path: "/api/worker/brief", method: "OPTIONS", handler: preflight });
 http.route({
