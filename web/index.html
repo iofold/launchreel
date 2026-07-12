@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LaunchReel — your launch trailer, in minutes</title>
+<meta name="description" content="Send your logo + screenshots, get a branded 30-second motion-graphics launch trailer back in minutes. Live from the Hermes Buildathon, Bangalore.">
+<style>
+  :root {
+    --ink: #101418;
+    --paper: #fafaf7;
+    --accent: #e8452c;
+    --muted: #6b7280;
+    --line: #d8d8d2;
+    --ok: #157f3d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--paper); color: var(--ink);
+    line-height: 1.5;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 20px 96px; }
+  header { margin-bottom: 40px; }
+  .logo { font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; }
+  .logo span { color: var(--accent); }
+  h1 { font-size: clamp(1.9rem, 5.5vw, 3rem); letter-spacing: -0.03em; line-height: 1.1; margin: 20px 0 12px; }
+  .sub { color: var(--muted); font-size: 1.05rem; max-width: 46ch; }
+  .badge {
+    display: inline-block; margin-top: 14px; padding: 4px 10px;
+    border: 1px solid var(--line); border-radius: 999px;
+    font-size: 0.78rem; color: var(--muted);
+  }
+  .badge b { color: var(--ok); }
+  form { margin-top: 36px; display: grid; gap: 18px; }
+  fieldset { border: 0; display: grid; gap: 18px; }
+  label { display: grid; gap: 6px; font-weight: 600; font-size: 0.9rem; }
+  input[type=text], input[type=email], input[type=url] {
+    font: inherit; padding: 11px 12px; border: 1.5px solid var(--line);
+    border-radius: 8px; background: #fff; width: 100%;
+  }
+  input:focus { outline: 2px solid var(--ink); outline-offset: 1px; border-color: var(--ink); }
+  .hint { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+  .tiers { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 560px) { .tiers { grid-template-columns: 1fr; } }
+  .tier {
+    position: relative; border: 1.5px solid var(--line); border-radius: 10px;
+    padding: 14px 12px; background: #fff; cursor: pointer; display: block;
+  }
+  .tier input { position: absolute; opacity: 0; }
+  .tier:has(input:checked) { border-color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink); }
+  .tier:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tier .name { font-weight: 700; font-size: 0.92rem; }
+  .tier .price { font-size: 1.3rem; font-weight: 800; margin: 2px 0; }
+  .tier .desc { font-size: 0.78rem; color: var(--muted); }
+  .assets-note {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 14px;
+    font-size: 0.88rem; color: var(--muted); background: #fff;
+  }
+  .assets-note b { color: var(--ink); }
+  button[type=submit] {
+    font: inherit; font-weight: 700; font-size: 1.02rem;
+    background: var(--ink); color: #fff; border: 0; border-radius: 10px;
+    padding: 14px 20px; cursor: pointer;
+  }
+  button[type=submit]:hover { background: #000; }
+  button[type=submit]:disabled { opacity: 0.6; cursor: wait; }
+  .status { min-height: 1.4em; font-size: 0.92rem; }
+  .status.err { color: var(--accent); }
+  .success {
+    display: none; margin-top: 36px; border: 1.5px solid var(--ok);
+    border-radius: 12px; padding: 24px; background: #fff;
+  }
+  .success h2 { font-size: 1.3rem; margin-bottom: 8px; }
+  .success p { color: var(--muted); font-size: 0.95rem; margin-bottom: 6px; }
+  .success .order-id { font-family: ui-monospace, monospace; font-size: 0.85rem; color: var(--ink); }
+  footer { margin-top: 64px; font-size: 0.8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">Launch<span>Reel</span></div>
+    <h1>Your launch trailer, in minutes.</h1>
+    <p class="sub">Send your logo + screenshots (or just your URL). Get back a branded 30-second motion-graphics trailer with voiceover — made by an agent studio, while you watch.</p>
+    <span class="badge">● <b>LIVE</b> from the Hermes Buildathon, Bangalore — trailers delivered same afternoon</span>
+  </header>
+
+  <form id="order-form" novalidate>
+    <fieldset id="form-fields">
+      <label>Product name
+        <input type="text" name="productName" required maxlength="100" placeholder="Ledgerly">
+      </label>
+      <label>One-liner
+        <span class="hint">One sentence on what it does — this drives your script.</span>
+        <input type="text" name="oneLiner" required maxlength="200" placeholder="Bookkeeping on autopilot for Indian SMBs">
+      </label>
+      <label>Email
+        <span class="hint">Your trailer link lands here (and on Telegram).</span>
+        <input type="email" name="email" required placeholder="founder@ledgerly.in">
+      </label>
+      <label>Product URL <span class="hint">(optional — skip it if you're not deployed yet)</span>
+        <input type="url" name="url" placeholder="https://…">
+      </label>
+
+      <div class="tiers" role="radiogroup" aria-label="Choose your tier">
+        <label class="tier"><input type="radio" name="tier" value="teaser" checked>
+          <span class="name">Teaser</span><span class="price">Free</span>
+          <span class="desc">~10-sec watermarked teaser, premieres on Buildathon TV</span>
+        </label>
+        <label class="tier"><input type="radio" name="tier" value="trailer">
+          <span class="name">Launch Trailer</span><span class="price">₹999</span>
+          <span class="desc">Polished 30-sec trailer, clean export + premiere page</span>
+        </label>
+        <label class="tier"><input type="radio" name="tier" value="pack">
+          <span class="name">Content Pack</span><span class="price">₹2,999</span>
+          <span class="desc">Trailer + 3 social posts + OG images + hero copy</span>
+        </label>
+      </div>
+
+      <div class="assets-note">
+        <b>Assets next:</b> after you order, our Telegram bot DMs you to collect your logo and up to 6 screenshots. No deployed site needed — uploads work fine.
+      </div>
+
+      <button type="submit" id="submit-btn">Get my trailer →</button>
+      <p class="status" id="status" role="status"></p>
+    </fieldset>
+  </form>
+
+  <section class="success" id="success" aria-live="polite">
+    <h2>Order in. 🎬</h2>
+    <p>Your order id: <span class="order-id" id="order-id"></span></p>
+    <p id="success-detail">Now message our Telegram bot to drop your assets — the pipeline starts the moment your logo lands.</p>
+    <p><b id="bot-link">Telegram bot link coming up — ask at the LaunchReel table.</b></p>
+  </section>
+
+  <footer>
+    LaunchReel · GrowthX × Hermes Buildathon, Bangalore · Built live on the floor, 2026-07-12
+  </footer>
+</main>
+
+<script>
+// Set after `npx convex dev` provisions the deployment (https://<name>.convex.site)
+const CONVEX_SITE_URL = window.CONVEX_SITE_URL || "";
+
+const form = document.getElementById("order-form");
+const statusEl = document.getElementById("status");
+const btn = document.getElementById("submit-btn");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  statusEl.textContent = "";
+  statusEl.classList.remove("err");
+
+  const data = Object.fromEntries(new FormData(form).entries());
+  if (!data.productName?.trim() || !data.oneLiner?.trim() || !data.email?.trim()) {
+    statusEl.textContent = "Product name, one-liner and email are required.";
+    statusEl.classList.add("err");
+    return;
+  }
+  if (!CONVEX_SITE_URL) {
+    statusEl.textContent = "Backend not wired yet — grab us at the LaunchReel table and we'll take your order directly.";
+    statusEl.classList.add("err");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Placing order…";
+  try {
+    const res = await fetch(CONVEX_SITE_URL + "/api/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: data.email.trim(),
+        productName: data.productName.trim(),
+        oneLiner: data.oneLiner.trim(),
+        url: data.url?.trim() || undefined,
+        tier: data.tier,
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || "order failed");
+    document.getElementById("order-id").textContent = body.jobId;
+    document.getElementById("form-fields").style.display = "none";
+    document.getElementById("success").style.display = "block";
+    document.getElementById("success").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    statusEl.textContent = "Couldn't place the order (" + err.message + "). Try again or find us at the table.";
+    statusEl.classList.add("err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Get my trailer →";
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "launchreel",
+  "private": true,
+  "description": "LaunchReel — your launch trailer, in minutes. GrowthX × Hermes Buildathon (Bangalore, 2026-07-12), Revenue track.",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy:convex": "convex deploy",
+    "deploy:web": "wrangler pages deploy web --project-name launchreel"
+  },
+  "dependencies": {
+    "convex": "^1.17.0"
+  }
+}

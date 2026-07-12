@@ -1,0 +1,7 @@
+node_modules/
+convex/_generated/
+.env
+.env.*
+dist/
+.wrangler/
+.tmp/
