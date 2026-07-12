@@ -5,3 +5,5 @@ convex/_generated/
 dist/
 .wrangler/
 .tmp/
+__pycache__/
+*.pyc
