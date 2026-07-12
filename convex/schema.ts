@@ -10,7 +10,9 @@ export default defineSchema({
   }).index("by_email", ["email"]),
 
   jobs: defineTable({
-    userId: v.id("users"),
+    // Optional: batch-seeded jobs (source "yc_batch") have no owner until a
+    // founder claims them. Patched in on claim.
+    userId: v.optional(v.id("users")),
     tier: v.union(v.literal("teaser"), v.literal("trailer"), v.literal("pack")),
     status: v.union(
       v.literal("queued"),
@@ -25,6 +27,8 @@ export default defineSchema({
     productName: v.string(),
     oneLiner: v.string(),
     url: v.optional(v.string()),
+    brief: v.optional(v.any()), // Scout's structured strategist brief (brief.json)
+    source: v.optional(v.string()), // "landing" | "yc_batch" | ...
     assetRefs: v.optional(v.array(v.string())), // R2 keys for logo/screenshots
     videoUrl: v.optional(v.string()),
     posterUrl: v.optional(v.string()),
@@ -32,7 +36,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_status", ["status"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_source", ["source"]),
 
   events: defineTable({
     type: v.string(), // "signup" | "first_use_started" | "job_created" | "payment_recorded" | "teaser_claimed" | "shared"

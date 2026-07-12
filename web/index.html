@@ -154,6 +154,23 @@
   .tier .t-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .tier .t-name{font-weight:900;font-size:15px}
   .tier .t-price{font-weight:900;font-size:16px}
+  .tier .t-top > span:last-child{display:inline-flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+  .t-price.struck{position:relative;opacity:.85}
+  .t-price.struck svg.scribble{position:absolute;left:-12%;top:46%;width:124%;height:12px;pointer-events:none}
+  .free-tag{
+    display:inline-block;background:var(--yellow,#FFD43B);border:2.5px solid #111;border-radius:999px;
+    padding:3px 10px;font-size:11.5px;font-weight:900;letter-spacing:.02em;color:#111;
+    transform:rotate(-6deg);box-shadow:3px 3px 0 #111;white-space:nowrap;
+    animation:tagWobble 2.6s ease-in-out infinite;
+  }
+  .tier[aria-pressed="true"] .free-tag{background:var(--pink,#FF4D8D);color:#fff}
+  @keyframes tagWobble{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(-2deg) scale(1.04)}}
+  @media(prefers-reduced-motion:reduce){.free-tag{animation:none}}
+  .url-hero{border:3px dashed #111;border-radius:14px;padding:16px;background:#EAF4FF;margin-bottom:14px}
+  .url-hero h3{display:flex;align-items:center;gap:8px}
+  .url-hero input{width:100%;margin-top:10px;font:inherit;font-weight:700;padding:12px;border:3px solid #111;border-radius:10px;background:#fff}
+  .or-divider{display:flex;align-items:center;gap:10px;margin:16px 0;font-weight:900;font-size:13px;color:#6b625a}
+  .or-divider::before,.or-divider::after{content:"";flex:1;border-top:3px dotted #111;opacity:.25}
   .tier .t-desc{font-weight:700;font-size:12.5px;opacity:.78;margin-top:4px}
   .tier[aria-pressed="true"]{background:var(--yellow);transform:translate(1px,1px);box-shadow:2px 2px 0 var(--ink)}
   .tier[aria-pressed="true"]::after{content:"✓";position:absolute;top:-12px;right:-10px;background:var(--green);
@@ -410,12 +427,21 @@
     <div class="screen-head">
       <span class="kicker">New order</span>
       <h1 style="margin-top:10px">Let's make your<br>launch trailer 🎬</h1>
-      <p class="sub">Drop your logo + a few screenshots. Our little crew turns them into a branded 30-second trailer with voiceover — <b>in minutes</b>.</p>
+      <p class="sub">Paste your website URL — or drop your own assets — and our little crew turns it into a branded 30-second trailer with voiceover, <b>in minutes</b>.</p>
     </div>
 
     <div class="intake-grid">
       <div>
+        <div class="card url-hero">
+          <h3><span class="big-emoji">🔗</span> Just enter your website</h3>
+          <small style="font-weight:700">Scout reads your site, grabs the logo, colors &amp; screenshots — you do nothing 😌</small>
+          <input id="pUrl" type="text" placeholder="yourstartup.com" autocomplete="off" aria-label="Your website URL">
+        </div>
+
+        <div class="or-divider">OR</div>
+
         <div class="card">
+          <h3 style="margin-bottom:10px"><span class="big-emoji">📦</span> Upload your assets</h3>
           <div class="dropzone dz-logo" id="dzLogo" role="button" tabindex="0" aria-label="Add your logo">
             <div class="dz-head">
               <span class="big-emoji">🏷️</span>
@@ -441,35 +467,31 @@
       <div>
         <div class="card">
           <div class="field">
-            <label for="pName">Product name</label>
+            <label for="pName">Product name <small style="font-weight:700;opacity:.6">(optional with a URL — Scout fills it)</small></label>
             <input id="pName" type="text" placeholder="e.g. Ledgerly" autocomplete="off">
           </div>
           <div class="field">
-            <label for="pOne">One-liner</label>
+            <label for="pOne">One-liner <small style="font-weight:700;opacity:.6">(optional with a URL)</small></label>
             <input id="pOne" type="text" placeholder="e.g. Bookkeeping on autopilot" autocomplete="off">
           </div>
           <div class="field">
             <label for="pEmail">Email <small style="font-weight:700;opacity:.6">(we send the reel here)</small></label>
             <input id="pEmail" type="email" placeholder="founder@yourstartup.com" autocomplete="off">
           </div>
-          <div class="field">
-            <label for="pUrl">Website <small style="font-weight:700;opacity:.6">(optional — Scout will snoop 🔍)</small></label>
-            <input id="pUrl" type="text" placeholder="yourstartup.com" autocomplete="off">
-          </div>
         </div>
 
         <h3 style="margin:18px 0 10px">Pick a tier</h3>
         <div class="tiers" id="tiers">
           <button class="tier" data-tier="free" aria-pressed="false" type="button">
-            <div class="t-top"><span class="t-name">Free teaser</span><span class="t-price">₹0</span></div>
+            <div class="t-top"><span class="t-name">Free teaser</span><span><span class="t-price struck">₹0<svg class="scribble" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M2 6 Q 18 2, 34 5 T 66 5 T 98 4" fill="none" stroke="#E8452C" stroke-width="4" stroke-linecap="round"/></svg></span> <span class="free-tag">obviously free 😜</span></span></div>
             <div class="t-desc">~10-sec watermarked teaser · claim by QR</div>
           </button>
           <button class="tier" data-tier="launch" aria-pressed="true" type="button">
-            <div class="t-top"><span class="t-name">Launch Trailer ⭐</span><span class="t-price">₹999</span></div>
+            <div class="t-top"><span class="t-name">Launch Trailer ⭐</span><span><span class="t-price struck">₹999<svg class="scribble" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M2 6 Q 18 2, 34 5 T 66 5 T 98 4" fill="none" stroke="#E8452C" stroke-width="4" stroke-linecap="round"/></svg></span> <span class="free-tag">FREE today! 🎉</span></span></div>
             <div class="t-desc">Polished 30-sec · clean export · premiere page</div>
           </button>
           <button class="tier" data-tier="pack" aria-pressed="false" type="button">
-            <div class="t-top"><span class="t-name">Content Pack</span><span class="t-price">₹2,999</span></div>
+            <div class="t-top"><span class="t-name">Content Pack</span><span><span class="t-price struck">₹2,999<svg class="scribble" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M2 6 Q 18 2, 34 5 T 66 5 T 98 4" fill="none" stroke="#E8452C" stroke-width="4" stroke-linecap="round"/></svg></span> <span class="free-tag">FREE today! 🎉</span></span></div>
             <div class="t-desc">Trailer + 3 social posts + OG images + hero copy</div>
           </button>
         </div>
@@ -1418,9 +1440,8 @@
     // Real order path: validate -> write to Convex -> run the pipeline view.
     var name=$('#pName').value.trim(), one=$('#pOne').value.trim(),
         email=$('#pEmail').value.trim(), url=$('#pUrl').value.trim();
-    if(!name){ toast('✋ Product name is required'); $('#pName').focus(); return; }
-    if(!one){ toast('✋ One-liner is required — it drives your script'); $('#pOne').focus(); return; }
     if(!EMAIL_RE.test(email)){ toast('✋ Valid email required — your trailer lands there'); $('#pEmail').focus(); return; }
+    if(!url && !(name && one)){ toast('✋ Give us your website URL — or a product name + one-liner'); $('#pUrl').focus(); return; }
     syncOrderBar();
     if(!CONVEX_SITE_URL){
       toast('⚠️ Demo mode — backend not wired yet, order not recorded');

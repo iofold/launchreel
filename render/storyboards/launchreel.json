@@ -1,0 +1,70 @@
+{
+  "brand": {
+    "name": "LaunchReel",
+    "oneLiner": "Your launch trailer, in minutes.",
+    "url": "launchreel.pages.dev",
+    "colors": {
+      "bg": "#FFF3D6",
+      "paper": "#FFFDF4",
+      "ink": "#17130D",
+      "accent": "#2F5BFF",
+      "accent2": "#FF3D8B",
+      "accent3": "#FFC93C",
+      "accent4": "#20C077"
+    }
+  },
+  "watermark": false,
+  "scenes": [
+    {
+      "type": "hook",
+      "durationSec": 5,
+      "headline": "Your launch trailer, in minutes.",
+      "sub": "Drop your logo. Get a branded 30-second trailer."
+    },
+    {
+      "type": "problem",
+      "durationSec": 5,
+      "headline": "Launch videos take weeks.",
+      "sub": "Editors, briefs, revisions, renders — for one 30-second cut."
+    },
+    {
+      "type": "tour_a",
+      "durationSec": 6,
+      "headline": "Watch the crew build it.",
+      "sub": "Live pipeline",
+      "screenshotPaths": ["screenshots/02-jobboard.png"],
+      "metrics": [
+        { "label": "scenes", "value": "6" },
+        { "label": "voiceover", "value": "1 take" },
+        { "label": "minutes", "value": "3" }
+      ]
+    },
+    {
+      "type": "tour_b",
+      "durationSec": 6,
+      "headline": "Premiere on Buildathon TV.",
+      "sub": "Channel-surf every launch",
+      "screenshotPaths": ["screenshots/04-tv.png"],
+      "metrics": [{ "label": "teasers claimed today", "value": "612" }]
+    },
+    {
+      "type": "social_proof",
+      "durationSec": 5,
+      "headline": "Founders ship louder.",
+      "metrics": [
+        { "label": "trailers made", "value": "2,481" },
+        { "label": "avg time", "value": "3 min" }
+      ],
+      "quote": {
+        "text": "A launch trailer before my coffee cooled.",
+        "author": "YC founder"
+      }
+    },
+    {
+      "type": "cta",
+      "durationSec": 3,
+      "headline": "Your launch trailer, in minutes.",
+      "sub": "Claim your teaser →"
+    }
+  ]
+}

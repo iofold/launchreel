@@ -1,0 +1,69 @@
+{
+  "brand": {
+    "name": "Linear",
+    "oneLiner": "The product development system for teams and agents.",
+    "url": "linear.app",
+    "colors": {
+      "bg": "#ECEDF3",
+      "paper": "#FFFFFF",
+      "ink": "#16161C",
+      "accent": "#5E6AD2",
+      "accent2": "#7C89F5",
+      "accent3": "#26B5A6",
+      "accent4": "#F2C94C"
+    }
+  },
+  "watermark": false,
+  "scenes": [
+    {
+      "type": "hook",
+      "durationSec": 5,
+      "headline": "Purpose-built for building.",
+      "sub": "Plan and ship products in the AI era."
+    },
+    {
+      "type": "problem",
+      "durationSec": 5,
+      "headline": "Your context is scattered.",
+      "sub": "Issues, docs, and PRs across a dozen tools."
+    },
+    {
+      "type": "tour_a",
+      "durationSec": 6,
+      "headline": "One system, streamlined.",
+      "sub": "Built for speed",
+      "screenshotPaths": ["desktop-hero.png"],
+      "metrics": [
+        { "label": "faster cycles", "value": "2x" },
+        { "label": "integrations", "value": "50+" }
+      ]
+    },
+    {
+      "type": "tour_b",
+      "durationSec": 6,
+      "headline": "Agents that ship with you.",
+      "sub": "Draft PRDs, push PRs",
+      "screenshotPaths": ["mobile.png"],
+      "metrics": [{ "label": "teams building", "value": "10,000+" }]
+    },
+    {
+      "type": "social_proof",
+      "durationSec": 5,
+      "headline": "Trusted by the best teams.",
+      "metrics": [
+        { "label": "companies", "value": "10,000+" },
+        { "label": "rating", "value": "4.9" }
+      ],
+      "quote": {
+        "text": "The product development system for teams and agents.",
+        "author": "Used by OpenAI"
+      }
+    },
+    {
+      "type": "cta",
+      "durationSec": 3,
+      "headline": "Built for the AI era.",
+      "sub": "Start building →"
+    }
+  ]
+}

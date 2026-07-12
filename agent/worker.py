@@ -8,6 +8,9 @@ each stage. Scale lanes with:  docker compose up -d --scale worker=4
 Env:
   CONVEX_SITE_URL   https://<name>.convex.site   (required)
   WORKER_KEY        shared secret matching the Convex deployment env (required)
+  LINKUP_API_KEY    for the Scout research stage (or place it in repo .env;
+                    scout.py auto-loads .env/.env.local). Without it, url jobs
+                    log the Scout failure and pass through.
   WORKER_ID         label for traces (default: hostname)
   POLL_SECONDS      idle poll interval (default 5)
 
@@ -18,6 +21,7 @@ end-to-end before the render blocks land.
 """
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -61,12 +65,109 @@ def run_stage(job: dict, stage: str, cmd: list[str] | None) -> None:
     subprocess.run(cmd, check=True, cwd=REPO, timeout=1800)
 
 
+def _email_runtime() -> str | None:
+    """Runtime for the (TypeScript) send script: bun if present, else node.
+    Node >= 22.18 strips types natively, and the worker image ships node 22 — so
+    no bun is required in the container."""
+    if shutil.which("bun"):
+        return "bun"
+    if shutil.which("node"):
+        return "node"
+    return None
+
+
+def send_email(to: str, template: str, data: dict) -> None:
+    """Transactional email via the email-channel skill (Resend), single source of
+    truth for templates in skills/email-channel/scripts/send-email.ts. Best-effort:
+    an email failure logs and returns — it must never fail a render job."""
+    if not to:
+        return
+    runtime = _email_runtime()
+    script = os.path.join(REPO, "skills", "email-channel", "scripts", "send-email.ts")
+    if not runtime or not os.path.exists(script):
+        log("", f"email {template} -> {to}: skipped (runtime/script unavailable)")
+        return
+    argv = ([runtime, "run", script] if runtime == "bun" else [runtime, script]) + [
+        "--to", to, "--template", template, "--data", json.dumps(data),
+    ]
+    try:
+        subprocess.run(argv, check=True, cwd=REPO, timeout=60, capture_output=True)
+        log("", f"email {template} -> {to}")
+    except Exception as e:  # noqa: BLE001 — email is best-effort
+        err = getattr(e, "stderr", None)
+        detail = err.decode()[:200] if isinstance(err, (bytes, bytearray)) else str(e)
+        log("", f"email {template} -> {to} FAILED: {detail}")
+
+
+def notify(job: dict, template: str) -> None:
+    """Customer-facing email for a job stage. Skips seeded/unclaimed jobs — they
+    have no owner email (a seeded trailer isn't a customer contact until claimed)."""
+    to = job.get("email")
+    if not to:
+        return
+    web = os.environ.get("WEB_BASE_URL", "https://launchreel.tv").rstrip("/")
+    data = {
+        "productName": job.get("productName"),
+        "tier": job.get("tier"),
+        "jobId": job.get("jobId"),
+        "dashboardUrl": web,
+    }
+    if template == "delivered":
+        data["videoUrl"] = job.get("videoUrl")
+        data["posterUrl"] = job.get("posterUrl")
+    send_email(to, template, data)
+
+
+def stage_research(job: dict) -> None:
+    """URL-first intake: run Scout on the job's url, then attach the brief.
+
+    Best-effort — a Scout failure logs and passes so the pipeline keeps moving
+    (the storyboard stage falls back to productName/oneLiner). Jobs with no url
+    keep the original log-and-pass behavior.
+    """
+    jid = job["jobId"]
+    url = job.get("url")
+    if not url:
+        log(jid, "research: no url — pass-through")
+        time.sleep(1)
+        return
+
+    out_dir = os.path.join(REPO, ".tmp", "scout", jid)
+    os.makedirs(out_dir, exist_ok=True)
+    scout = os.path.join(REPO, "skills", "url-intake", "scripts", "scout.py")
+    log(jid, f"research: scout {url}")
+    try:
+        subprocess.run(
+            [sys.executable, scout, "--url", url, "--out-dir", out_dir, "--session", f"scout-{jid[-8:]}"],
+            check=True, cwd=REPO, timeout=300,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        log(jid, f"research: scout failed ({e}); passing through")
+        return
+
+    brief_path = os.path.join(out_dir, "brief.json")
+    if not os.path.exists(brief_path):
+        log(jid, "research: no brief.json produced; passing through")
+        return
+    try:
+        with open(brief_path, encoding="utf-8") as fh:
+            brief = json.load(fh)
+        api("/api/worker/brief", {"jobId": jid, "brief": brief})
+        log(jid, f"research: brief attached ({brief.get('productName')!r})")
+    except Exception as e:  # noqa: BLE001 — attaching brief is best-effort
+        log(jid, f"research: brief attach failed ({e}); continuing")
+
+
 def process(job: dict) -> None:
     jid = job["jobId"]
     log(jid, f"claimed: {job['productName']} ({job['tier']})")
 
-    # research (claim already set it) — brand/asset extraction via Linkup + uploads
-    run_stage(job, "research", None)
+    # Order-confirmation email — email is the primary channel. Best-effort; seeded
+    # jobs have no owner email and are skipped inside notify().
+    notify(job, "order_confirmation")
+
+    # research (claim already set it) — Scout: Linkup fetch/search + screenshots
+    stage_research(job)
 
     set_status(jid, "storyboard")  # creative brief -> storyboard.json (fixed schema)
     run_stage(job, "storyboard", None)
@@ -79,6 +180,9 @@ def process(job: dict) -> None:
 
     set_status(jid, "awaiting_approval")  # human gate: builder taps approve
     log(jid, "waiting at approval gate — gateway/operator advances to delivered")
+    # On approval -> delivered, send the delivery email. Kept commented until the
+    # approval flow exists and stamps videoUrl/posterUrl on the job:
+    #   notify({**job, "videoUrl": <url>, "posterUrl": <url>}, "delivered")
 
 
 def main() -> None:

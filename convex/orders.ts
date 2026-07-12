@@ -1,13 +1,28 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+// "linear.app" / "https://www.linear.app/x" -> "Linear". Placeholder product
+// name for URL-first orders until Scout backfills the real one from the brief.
+function domainPlaceholder(url?: string): string {
+  if (!url) return "Untitled";
+  let host = url.trim().replace(/^[a-z]+:\/\//i, "").split("/")[0].split(":")[0];
+  if (host.startsWith("www.")) host = host.slice(4);
+  const stem = host.includes(".") ? host.split(".")[0] : host;
+  if (!stem) return "Untitled";
+  return stem.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 // Single entry point for the landing page: upsert user, create job,
 // log signup (new user) + first_use_started (first job) events.
+//
+// URL-first: productName/oneLiner are optional. When missing, productName is a
+// placeholder derived from the URL domain and oneLiner is left empty (""), a
+// marker attachBrief uses to backfill both from Scout's brief.
 export const place = mutation({
   args: {
     email: v.string(),
-    productName: v.string(),
-    oneLiner: v.string(),
+    productName: v.optional(v.string()),
+    oneLiner: v.optional(v.string()),
     url: v.optional(v.string()),
     tier: v.union(v.literal("teaser"), v.literal("trailer"), v.literal("pack")),
     source: v.optional(v.string()),
@@ -16,6 +31,8 @@ export const place = mutation({
     const now = Date.now();
     const email = args.email.trim().toLowerCase();
     const source = args.source ?? "landing";
+    const productName = (args.productName?.trim() || domainPlaceholder(args.url)).slice(0, 100);
+    const oneLiner = (args.oneLiner?.trim() ?? "").slice(0, 200);
 
     let user = await ctx.db
       .query("users")
@@ -27,7 +44,7 @@ export const place = mutation({
       isNewUser = true;
       const userId = await ctx.db.insert("users", {
         email,
-        company: args.productName,
+        company: productName,
         source,
         createdAt: now,
       });
@@ -49,9 +66,10 @@ export const place = mutation({
       userId: user._id,
       tier: args.tier,
       status: "queued",
-      productName: args.productName,
-      oneLiner: args.oneLiner,
+      productName,
+      oneLiner,
       url: args.url,
+      source,
       createdAt: now,
       updatedAt: now,
     });
@@ -68,7 +86,7 @@ export const place = mutation({
       type: "job_created",
       userId: user._id,
       jobId,
-      meta: { tier: args.tier },
+      meta: { tier: args.tier, source },
       createdAt: now,
     });
 
@@ -176,21 +194,208 @@ export const claimNext = mutation({
       .first();
     if (!job) return null;
     await ctx.db.patch(job._id, { status: "research", updatedAt: Date.now() });
+    // Seeded (yc_batch) jobs have no userId yet — events.userId is optional, so
+    // only attach it when present.
     await ctx.db.insert("events", {
       type: "job_claimed",
       jobId: job._id,
-      userId: job.userId,
-      meta: { workerId },
+      ...(job.userId ? { userId: job.userId } : {}),
+      meta: { workerId, source: job.source },
       createdAt: Date.now(),
     });
+    // Owner email drives the order-confirmation send (email is the primary
+    // channel). Seeded/unclaimed jobs have no user -> null, and the worker skips
+    // the confirmation for those (a seeded trailer is not yet a customer contact).
+    const email = job.userId ? (await ctx.db.get(job.userId))?.email ?? null : null;
     return {
       jobId: job._id,
+      email,
       tier: job.tier,
       productName: job.productName,
       oneLiner: job.oneLiner,
       url: job.url,
+      source: job.source,
       assetRefs: job.assetRefs,
     };
+  },
+});
+
+// ---- Launch stunt: pre-render the current YC batch ------------------------
+
+// Seed jobs for a batch of companies with NO user row and NO signup event —
+// integrity rule so the scoreboard stays honest (a seeded trailer is not a
+// conversion). The conversion is claimJob: a founder enters their email later.
+// Key-guarded at the HTTP layer (/api/worker/seed, X-Worker-Key); this mutation
+// is not exposed publicly on the landing page.
+export const seedBatch = mutation({
+  args: {
+    batch: v.optional(v.string()), // e.g. "summer-2026" — recorded in meta
+    tier: v.optional(v.union(v.literal("teaser"), v.literal("trailer"), v.literal("pack"))),
+    companies: v.array(
+      v.object({
+        name: v.string(),
+        website: v.string(),
+        oneLiner: v.optional(v.string()),
+        logoUrl: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const tier = args.tier ?? "teaser";
+    const jobIds: string[] = [];
+    for (const c of args.companies) {
+      const website = c.website.trim();
+      if (!website) continue;
+      // Idempotent-ish: skip a company already seeded with the same URL.
+      const dupe = await ctx.db
+        .query("jobs")
+        .withIndex("by_source", (q) => q.eq("source", "yc_batch"))
+        .filter((q) => q.eq(q.field("url"), website))
+        .first();
+      if (dupe) {
+        jobIds.push(dupe._id);
+        continue;
+      }
+      const jobId = await ctx.db.insert("jobs", {
+        // no userId — unclaimed
+        tier,
+        status: "queued",
+        productName: (c.name?.trim() || domainPlaceholder(website)).slice(0, 100),
+        oneLiner: (c.oneLiner?.trim() ?? "").slice(0, 200),
+        url: website,
+        source: "yc_batch",
+        assetRefs: c.logoUrl ? [c.logoUrl] : undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
+      jobIds.push(jobId);
+    }
+    // No signup / first_use / user events — only a batch-scoped job_seeded
+    // trace event (never counted by the scoreboard funnel).
+    if (jobIds.length) {
+      await ctx.db.insert("events", {
+        type: "job_seeded",
+        meta: { batch: args.batch ?? "unknown", count: jobIds.length },
+        createdAt: now,
+      });
+    }
+    return { seeded: jobIds.length, jobIds };
+  },
+});
+
+// Worker writes Scout's structured brief onto the job. For URL-first jobs
+// (empty oneLiner placeholder) it also backfills productName/oneLiner from the
+// brief so the dashboard/TV show the real name; full-form orders (user-typed
+// oneLiner) keep their own copy.
+export const attachBrief = mutation({
+  args: { jobId: v.id("jobs"), brief: v.any() },
+  handler: async (ctx, { jobId, brief }) => {
+    const job = await ctx.db.get(jobId);
+    if (!job) return { ok: false, error: "job not found" };
+    const patch: Record<string, unknown> = { brief, updatedAt: Date.now() };
+    if (!job.oneLiner) {
+      if (typeof brief?.productName === "string" && brief.productName.trim())
+        patch.productName = String(brief.productName).slice(0, 100);
+      if (typeof brief?.oneLiner === "string" && brief.oneLiner.trim())
+        patch.oneLiner = String(brief.oneLiner).slice(0, 200);
+    }
+    await ctx.db.patch(jobId, patch);
+    return { ok: true };
+  },
+});
+
+// Buildathon TV "claim your trailer": a founder enters their email against a
+// seeded (or any) job. THIS is the conversion — create/find the user, log
+// signup (new) + teaser_claimed, and link the job to the user.
+export const claimJob = mutation({
+  args: { jobId: v.id("jobs"), email: v.string(), source: v.optional(v.string()) },
+  handler: async (ctx, { jobId, email, source }) => {
+    const now = Date.now();
+    const clean = email.trim().toLowerCase();
+    const job = await ctx.db.get(jobId);
+    if (!job) return { ok: false, error: "job not found" };
+
+    let user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", clean))
+      .unique();
+    let isNewUser = false;
+    if (!user) {
+      isNewUser = true;
+      const userId = await ctx.db.insert("users", {
+        email: clean,
+        company: job.productName,
+        source: source ?? "tv_claim",
+        createdAt: now,
+      });
+      user = (await ctx.db.get(userId))!;
+      await ctx.db.insert("events", {
+        type: "signup",
+        userId,
+        meta: { source: source ?? "tv_claim" },
+        createdAt: now,
+      });
+    }
+
+    // Link the job to the claiming founder (only if unclaimed).
+    if (!job.userId) await ctx.db.patch(jobId, { userId: user._id, updatedAt: now });
+
+    await ctx.db.insert("events", {
+      type: "teaser_claimed",
+      userId: user._id,
+      jobId,
+      meta: { source: source ?? "tv_claim", batchSeeded: job.source === "yc_batch" },
+      createdAt: now,
+    });
+
+    return { ok: true, userId: user._id, jobId, isNewUser };
+  },
+});
+
+// Inbound email (Cloudflare Email Routing -> Email Worker -> /api/email/inbound).
+// Email is the primary channel, so a message from a new sender is a real contact:
+// upsert them as a user (source "email") + signup event, then log an
+// email_inbound event carrying the parsed subject/body so the gateway/operator
+// can triage it as a new order or a reply on an existing job.
+export const emailInbound = mutation({
+  args: {
+    from: v.string(),
+    subject: v.optional(v.string()),
+    text: v.optional(v.string()),
+  },
+  handler: async (ctx, { from, subject, text }) => {
+    const now = Date.now();
+    const email = from.trim().toLowerCase();
+
+    let user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    let isNewUser = false;
+    if (!user) {
+      isNewUser = true;
+      const userId = await ctx.db.insert("users", { email, source: "email", createdAt: now });
+      user = (await ctx.db.get(userId))!;
+      await ctx.db.insert("events", {
+        type: "signup",
+        userId,
+        meta: { source: "email" },
+        createdAt: now,
+      });
+    }
+
+    await ctx.db.insert("events", {
+      type: "email_inbound",
+      userId: user._id,
+      meta: {
+        subject: (subject ?? "").slice(0, 200),
+        text: (text ?? "").slice(0, 2000),
+      },
+      createdAt: now,
+    });
+
+    return { ok: true, userId: user._id, isNewUser };
   },
 });
 

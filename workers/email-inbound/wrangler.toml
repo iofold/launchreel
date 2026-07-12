@@ -1,0 +1,13 @@
+name = "launchreel-email-inbound"
+main = "src/index.mjs"
+compatibility_date = "2026-07-01"
+workers_dev = false
+
+# CONVEX_SITE_URL is the LaunchReel Convex HTTP host. Override per deployment.
+[vars]
+CONVEX_SITE_URL = "https://kindhearted-fish-695.convex.site"
+# FORWARD_TO = "you@example.com"   # optional; must be a VERIFIED Email Routing destination
+
+# EMAIL_WEBHOOK_KEY is a secret, NOT a var — set it out-of-band:
+#   npx wrangler secret put EMAIL_WEBHOOK_KEY --name launchreel-email-inbound
+# It must equal the Convex deployment's EMAIL_WEBHOOK_KEY (or WORKER_KEY, the fallback).

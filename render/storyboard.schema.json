@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://launchreel.dev/storyboard.schema.json",
+  "title": "LaunchReel Storyboard",
+  "description": "The ONLY artifact the LLM storyboard-writer produces. The renderer is deterministic Remotion: it never runs LLM-authored code. Exactly six scenes in fixed order (hook, problem, tour_a, tour_b, social_proof, cta). Output is always 1080x1920 @ 30fps; total length = sum of scene durationSec (target ~30s). Asset paths are RELATIVE TO the job's assets dir (the --assets flag); render.ts copies them into the Remotion public dir and rewrites them. Optional assets may be omitted or \"\" — scenes degrade to solid brand-color fields.",
+  "type": "object",
+  "required": ["brand", "scenes"],
+  "additionalProperties": false,
+  "properties": {
+    "brand": {
+      "type": "object",
+      "required": ["name", "colors"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Product/wordmark name, e.g. \"LaunchReel\"." },
+        "oneLiner": { "type": "string", "description": "Positioning line, used as Hook/CTA fallback copy." },
+        "url": { "type": "string", "description": "Display URL for the browser frame + CTA pill, e.g. \"launchreel.pages.dev\"." },
+        "logoPath": { "type": "string", "description": "Optional logo image (assets-relative). Currently informational; wordmark is drawn from name." },
+        "colors": {
+          "type": "object",
+          "required": ["bg", "accent", "ink"],
+          "additionalProperties": false,
+          "description": "Hex colors (#RGB or #RRGGBB). bg=page background (keep LIGHT — borders/text use ink). accent=primary brand color. ink=near-black for borders/text. Optional paper/accent2..4 flesh out the pop palette; missing accents are derived from accent by hue rotation.",
+          "properties": {
+            "bg": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+            "accent": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+            "ink": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+            "paper": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+            "accent2": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+            "accent3": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+            "accent4": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" }
+          }
+        }
+      }
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Six scenes in fixed order. Recommended durations: hook 5, problem 5, tour_a 6, tour_b 6, social_proof 5, cta 3 (=30s).",
+      "items": {
+        "type": "object",
+        "required": ["type", "durationSec"],
+        "additionalProperties": false,
+        "properties": {
+          "type": { "type": "string", "enum": ["hook", "problem", "tour_a", "tour_b", "social_proof", "cta"] },
+          "durationSec": { "type": "number", "minimum": 1, "maximum": 15 },
+          "headline": { "type": "string", "description": "Big on-screen line. Kept SHORT (3-7 words); last word gets an accent chip in hook/problem." },
+          "sub": { "type": "string", "description": "Supporting line / callout / CTA button label depending on scene." },
+          "screenshotPaths": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "REAL product screenshots (assets-relative). tour_a uses [0]; tour_b uses [0]; problem [0] is shown desaturated. Take with agent-browser at 1440x900."
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": "string", "description": "Numeric part animates a count-up; prefix/suffix preserved (e.g. \"$4.2M\", \"92%\", \"10,000+\"). Non-numeric (\"OpenAI\") renders static." }
+              }
+            },
+            "description": "tour_a shows up to 3 as a tile row; tour_b uses metrics[0] as the hero zoom-on-payoff; social_proof shows up to 3."
+          },
+          "quote": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "text": { "type": "string" }, "author": { "type": "string" } },
+            "description": "social_proof testimonial card."
+          },
+          "bgVideoPath": { "type": "string", "description": "Optional muted Veo b-roll rendered UNDER the text (hook/cta only). Never put UI/text through gen-video." }
+        }
+      }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "voPath": { "type": "string", "description": "Optional voiceover track (assets-relative). Ducks music to 22%." },
+        "musicPath": { "type": "string", "description": "Optional background music (assets-relative)." }
+      }
+    },
+    "watermark": { "type": "boolean", "description": "true = free tier: persistent \"made with LaunchReel\" corner tag + CTA ribbon." }
+  }
+}
