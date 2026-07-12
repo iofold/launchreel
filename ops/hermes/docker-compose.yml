@@ -1,0 +1,84 @@
+name: launchreel-agent
+
+# LaunchReel's contained Hermes stack.
+#   gateway  — ONE instance: the conversational brain (Telegram intake, per-company
+#              memory, kanban ops board, subagent orchestration). One bot token =
+#              one long-poll consumer, so this service never scales horizontally.
+#   worker   — N instances: stateless pipeline lanes. Parallelism is safe because
+#              job claims are atomic Convex mutations (see convex/orders.ts
+#              claimNext). Scale up/down live:
+#                docker compose up -d --scale worker=4
+#   dashboard — Hermes session viewer (observability rubric: pull up any run).
+#
+# Repo is mounted at /workspace/launchreel; skills live in skills/ and are
+# addressed from AGENTS.md, which Hermes picks up when working in the mount.
+
+services:
+  gateway:
+    image: launchreel-hermes:local
+    build:
+      context: .
+      args:
+        HERMES_UID: ${HERMES_UID:-1000}
+        HERMES_GID: ${HERMES_GID:-1000}
+    container_name: launchreel-gateway
+    restart: unless-stopped
+    command: gateway run
+    shm_size: 1gb
+    ports:
+      - "127.0.0.1:8652:8652"
+    volumes:
+      - ${HERMES_DATA_DIR:-~/.launchreel-hermes}:/opt/data
+      - ../..:/workspace/launchreel
+    env_file:
+      - .env
+    environment:
+      HERMES_HOME: /opt/data
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: "8652"
+      API_SERVER_KEY: ${API_SERVER_KEY:?set API_SERVER_KEY in ops/hermes/.env}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python3 -c "import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8652/health', timeout=5).read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    image: launchreel-hermes:local
+    # no container_name: replicas need generated names (worker-1, worker-2, …)
+    restart: unless-stopped
+    command: python3 /workspace/launchreel/agent/worker.py
+    volumes:
+      - ../..:/workspace/launchreel
+    env_file:
+      - .env
+    environment:
+      CONVEX_SITE_URL: ${CONVEX_SITE_URL:?set CONVEX_SITE_URL in ops/hermes/.env}
+      WORKER_KEY: ${WORKER_KEY:?set WORKER_KEY in ops/hermes/.env}
+    deploy:
+      replicas: 2
+
+  dashboard:
+    image: launchreel-hermes:local
+    container_name: launchreel-dashboard
+    restart: unless-stopped
+    command: dashboard --host 0.0.0.0 --insecure --no-open
+    profiles: ["dash"]
+    ports:
+      - "127.0.0.1:9129:9119"
+    volumes:
+      - ${HERMES_DATA_DIR:-~/.launchreel-hermes}:/opt/data
+    env_file:
+      - .env
+    environment:
+      HERMES_HOME: /opt/data
+      GATEWAY_HEALTH_URL: http://gateway:8652
+    depends_on:
+      gateway:
+        condition: service_started

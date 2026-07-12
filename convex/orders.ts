@@ -163,6 +163,37 @@ export const nextQueued = query({
   },
 });
 
+// Atomic claim for the worker pool: Convex mutations are transactional, so two
+// workers can never claim the same job — the second one sees status != queued
+// and gets the next job (or null). workerId is recorded in events for the trace.
+export const claimNext = mutation({
+  args: { workerId: v.string() },
+  handler: async (ctx, { workerId }) => {
+    const job = await ctx.db
+      .query("jobs")
+      .withIndex("by_status", (q) => q.eq("status", "queued"))
+      .order("asc")
+      .first();
+    if (!job) return null;
+    await ctx.db.patch(job._id, { status: "research", updatedAt: Date.now() });
+    await ctx.db.insert("events", {
+      type: "job_claimed",
+      jobId: job._id,
+      userId: job.userId,
+      meta: { workerId },
+      createdAt: Date.now(),
+    });
+    return {
+      jobId: job._id,
+      tier: job.tier,
+      productName: job.productName,
+      oneLiner: job.oneLiner,
+      url: job.url,
+      assetRefs: job.assetRefs,
+    };
+  },
+});
+
 // Buildathon TV: delivered jobs, newest first.
 export const delivered = query({
   args: {},

@@ -69,4 +69,58 @@ http.route({
   }),
 });
 
+// ---- Worker-pool endpoints (parallel render workers) ----------------------
+// Guarded by a shared secret: set WORKER_KEY in the Convex deployment env
+// (npx convex env set WORKER_KEY <value>) and send it as X-Worker-Key.
+
+const workerAuthed = (req: Request) => {
+  const key = process.env.WORKER_KEY;
+  return !!key && req.headers.get("X-Worker-Key") === key;
+};
+
+http.route({ path: "/api/worker/claim", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/claim",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {}
+    const job = await ctx.runMutation(api.orders.claimNext, {
+      workerId: String(body?.workerId ?? "unknown").slice(0, 64),
+    });
+    return json({ job });
+  }),
+});
+
+http.route({ path: "/api/worker/update", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/worker/update",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    if (!workerAuthed(req)) return json({ error: "unauthorized" }, 401);
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    const { jobId, status, videoUrl, posterUrl } = body ?? {};
+    const allowed = [
+      "research",
+      "storyboard",
+      "voiceover",
+      "rendering",
+      "awaiting_approval",
+      "delivered",
+      "failed",
+    ];
+    if (!jobId || !allowed.includes(status)) return json({ error: "jobId + valid status required" }, 400);
+    await ctx.runMutation(api.orders.updateStatus, { jobId, status, videoUrl, posterUrl });
+    return json({ ok: true });
+  }),
+});
+
 export default http;
