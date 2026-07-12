@@ -82,3 +82,17 @@ services:
     depends_on:
       gateway:
         condition: service_started
+    networks:
+      - default
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.services.launchreel-dash.loadbalancer.server.port=9119"
+      - "traefik.http.routers.launchreel-dash.rule=Host(`launchreel-dash.dev1.ctxmill.com`)"
+      - "traefik.http.routers.launchreel-dash.entrypoints=websecure"
+      - "traefik.http.routers.launchreel-dash.tls.certresolver=letsencrypt"
+
+networks:
+  web:
+    external: true
