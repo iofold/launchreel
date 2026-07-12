@@ -69,6 +69,27 @@ http.route({
   }),
 });
 
+http.route({ path: "/api/job/status", method: "OPTIONS", handler: preflight });
+http.route({
+  path: "/api/job/status",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "invalid JSON" }, 400);
+    }
+    if (!body?.jobId) return json({ error: "jobId required" }, 400);
+    try {
+      const job = await ctx.runQuery(api.orders.jobStatus, { jobId: body.jobId });
+      return json({ job });
+    } catch {
+      return json({ error: "unknown job" }, 404);
+    }
+  }),
+});
+
 // ---- Worker-pool endpoints (parallel render workers) ----------------------
 // Guarded by a shared secret: set WORKER_KEY in the Convex deployment env
 // (npx convex env set WORKER_KEY <value>) and send it as X-Worker-Key.

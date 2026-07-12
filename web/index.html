@@ -491,6 +491,7 @@
       <span class="chip">🏷️ <b id="obName">Ledgerly</b></span>
       <span class="chip">💬 <span id="obOne">Bookkeeping on autopilot</span></span>
       <span class="chip">🎟️ <b id="obTier">₹999 Launch Trailer</b></span>
+      <span class="chip" id="liveChip" style="display:none">📡 order book: <b id="liveStatus">—</b></span>
       <button class="btn yellow" id="rerunBtn" type="button" style="padding:8px 12px;font-size:13px;margin-left:auto">▶ Re-run</button>
     </div>
 
@@ -673,6 +674,26 @@
     });
   }
   var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+  // Live order-book status: the simulated pipeline below is UX theater; this
+  // chip shows what the Convex DB actually says about the job. DB truth wins.
+  var livePollTimer = null;
+  function pollLiveStatus(jobId){
+    if(!CONVEX_SITE_URL) return;
+    var chip = document.getElementById('liveChip'), out = document.getElementById('liveStatus');
+    chip.style.display = '';
+    clearInterval(livePollTimer);
+    function tick(){
+      apiPost('/api/job/status', { jobId: jobId }).then(function(r){
+        if(!r.job) return;
+        out.textContent = r.job.status.replace(/_/g,' ');
+        if(r.job.status === 'delivered'){ clearInterval(livePollTimer); toast('📦 Order book: DELIVERED'); }
+        if(r.job.status === 'failed'){ clearInterval(livePollTimer); }
+      }).catch(function(){ /* transient — keep polling */ });
+    }
+    tick();
+    livePollTimer = setInterval(tick, 5000);
+  }
 
   /* ---------------------------------------------------------------
      STATE — single source of truth for the whole mock
@@ -1412,6 +1433,7 @@
       .then(function(r){
         state.jobId=r.jobId;
         toast('🧾 Order '+String(r.jobId).slice(-6)+' placed — crew starting!');
+        pollLiveStatus(r.jobId);
         runPipeline();
       })
       .catch(function(err){ toast('😖 Order failed: '+esc(err.message)+' — try again or find us at the table'); })

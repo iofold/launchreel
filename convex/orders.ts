@@ -194,6 +194,23 @@ export const claimNext = mutation({
   },
 });
 
+// Public job status for the live dashboard (jobId is unguessable).
+export const jobStatus = query({
+  args: { jobId: v.id("jobs") },
+  handler: async (ctx, { jobId }) => {
+    const j = await ctx.db.get(jobId);
+    if (!j) return null;
+    return {
+      status: j.status,
+      productName: j.productName,
+      tier: j.tier,
+      videoUrl: j.videoUrl ?? null,
+      posterUrl: j.posterUrl ?? null,
+      updatedAt: j.updatedAt,
+    };
+  },
+});
+
 // Buildathon TV: delivered jobs, newest first.
 export const delivered = query({
   args: {},
