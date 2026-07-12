@@ -7,3 +7,6 @@ dist/
 .tmp/
 __pycache__/
 *.pyc
+promo/launch-video/remotion/out/
+promo/launch-video/remotion/public/gen/
+promo/launch-video/remotion/node_modules/
