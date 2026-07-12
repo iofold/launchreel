@@ -7,7 +7,7 @@ Built live on the floor at the GrowthX × Hermes Buildathon, Bangalore, 2026-07-
 ## Architecture
 
 - `convex/` — source of truth: `users`, `jobs`, `events`, `payments` tables; `orders.place` (upsert user + create job + `signup`/`first_use_started` events), `orders.scoreboard` (proof-minute numbers), HTTP endpoints (`/api/order`, `/api/signup`) for the static landing.
-- `web/` — Cloudflare Pages static landing: intake form (upload-first messaging; assets collected via Telegram bot), tier ladder (free teaser / ₹999 trailer / ₹2,999 pack).
+- `web/` — Cloudflare Pages app shell (single file, from the winning "Pop Studio × Broadcast TV" mock): intake (upload-first) → agent-org job dashboard (Scout→Strategist→Director→Renderer→Publisher, approval gate) → delivery → Buildathon TV (featured player + program guide, channel surf). Intake posts to `/api/order`, TV claim posts to `/api/signup`; with `window.CONVEX_SITE_URL` unset it runs in demo mode (pipeline theater, no DB writes). "Simulate order" never writes to the DB.
 - `render/` — (next block) Remotion render worker polling `orders.nextQueued`; fork of `remotion-dev/template-prompt-to-motion-graphics-saas`.
 
 ## Bring-up

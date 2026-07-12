@@ -1,197 +1,1431 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LaunchReel — your launch trailer, in minutes</title>
-<meta name="description" content="Send your logo + screenshots, get a branded 30-second motion-graphics launch trailer back in minutes. Live from the Hermes Buildathon, Bangalore.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LaunchReel — Final UI mock (Pop Studio × Broadcast TV)</title>
+<!--
+  ============================================================================
+  LaunchReel — FINAL merged UI mock.
+  BASE aesthetic + all screens: Pop Studio (neo-brutalist pop).
+  MERGE: the Buildathon TV screen adopts the Broadcast-TV STRUCTURE
+         (one big featured "now playing" surface + a program-guide list,
+          channel-surf by click / arrow keys / swipe) — rebuilt entirely in
+          Pop Studio's cream/primary/sticker visual language.
+
+  Four screens, one file, zero external requests. Implementation spec for the
+  build team: state lives in a single `state` object (see <script>), and each
+  screen is a <section class="screen"> toggled by go(name).
+  ============================================================================
+-->
 <style>
-  :root {
-    --ink: #101418;
-    --paper: #fafaf7;
-    --accent: #e8452c;
-    --muted: #6b7280;
-    --line: #d8d8d2;
-    --ok: #157f3d;
+  :root{
+    --cream:#FFF3D6;
+    --paper:#FFFDF4;
+    --ink:#17130D;
+    --blue:#2F5BFF;
+    --pink:#FF3D8B;
+    --yellow:#FFC93C;
+    --green:#20C077;
+    --orange:#FF6B2C;
+    --purple:#7C4DFF;
+    --sky:#CDE7FF;
+    --shadow:5px 5px 0 var(--ink);
+    --shadow-sm:3px 3px 0 var(--ink);
+    --shadow-lg:8px 8px 0 var(--ink);
+    --spring:cubic-bezier(.34,1.56,.64,1);
+    --bd:4px solid var(--ink);
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--paper); color: var(--ink);
-    line-height: 1.5;
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--cream);
+    color:var(--ink);
+    font-family:"Segoe UI",Roboto,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    font-weight:600;
+    line-height:1.35;
+    overflow-x:hidden;
+    -webkit-text-size-adjust:100%;
   }
-  main { max-width: 720px; margin: 0 auto; padding: 40px 20px 96px; }
-  header { margin-bottom: 40px; }
-  .logo { font-weight: 800; font-size: 1.1rem; letter-spacing: -0.02em; }
-  .logo span { color: var(--accent); }
-  h1 { font-size: clamp(1.9rem, 5.5vw, 3rem); letter-spacing: -0.03em; line-height: 1.1; margin: 20px 0 12px; }
-  .sub { color: var(--muted); font-size: 1.05rem; max-width: 46ch; }
-  .badge {
-    display: inline-block; margin-top: 14px; padding: 4px 10px;
-    border: 1px solid var(--line); border-radius: 999px;
-    font-size: 0.78rem; color: var(--muted);
+  /* decorative background stickers */
+  .bg-deco{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
+  .bg-deco span{position:absolute;font-size:64px;opacity:.16;transform:rotate(-12deg)}
+  .bg-deco .b1{top:8%;left:-10px}
+  .bg-deco .b2{top:38%;right:-6px;font-size:80px;transform:rotate(14deg)}
+  .bg-deco .b3{bottom:6%;left:6%;font-size:70px;transform:rotate(8deg)}
+
+  h1,h2,h3{margin:0;line-height:1.05;letter-spacing:-.02em}
+  h1{font-size:clamp(26px,7vw,44px);font-weight:900}
+  h2{font-size:clamp(20px,4.4vw,28px);font-weight:900}
+  h3{font-size:16px;font-weight:900}
+  p{margin:0}
+  button{font-family:inherit}
+
+  /* ---------- layout ---------- */
+  .wrap{position:relative;z-index:1;max-width:980px;margin:0 auto;padding:0 16px 90px}
+  header.nav{
+    position:sticky;top:0;z-index:40;background:var(--cream);
+    border-bottom:var(--bd);
   }
-  .badge b { color: var(--ok); }
-  form { margin-top: 36px; display: grid; gap: 18px; }
-  fieldset { border: 0; display: grid; gap: 18px; }
-  label { display: grid; gap: 6px; font-weight: 600; font-size: 0.9rem; }
-  input[type=text], input[type=email], input[type=url] {
-    font: inherit; padding: 11px 12px; border: 1.5px solid var(--line);
-    border-radius: 8px; background: #fff; width: 100%;
+  .nav-inner{max-width:980px;margin:0 auto;padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:900;font-size:22px;letter-spacing:-.03em;flex:0 0 auto}
+  .logo .reel-badge{width:34px;height:34px;flex:0 0 auto;display:block}
+  .logo .wm b{color:var(--ink)}
+  .logo .wm em{
+    font-style:normal;background:var(--pink);color:#fff;padding:0 7px;border:3px solid var(--ink);
+    border-radius:9px;box-shadow:2px 2px 0 var(--ink);display:inline-block;transform:rotate(-3deg)
   }
-  input:focus { outline: 2px solid var(--ink); outline-offset: 1px; border-color: var(--ink); }
-  .hint { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
-  .tiers { display: grid; gap: 10px; grid-template-columns: repeat(3, 1fr); }
-  @media (max-width: 560px) { .tiers { grid-template-columns: 1fr; } }
-  .tier {
-    position: relative; border: 1.5px solid var(--line); border-radius: 10px;
-    padding: 14px 12px; background: #fff; cursor: pointer; display: block;
+  .navlinks{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-left:auto}
+  .navlinks .tab{
+    background:var(--paper);border:3px solid var(--ink);border-radius:11px;
+    padding:7px 11px;font-weight:800;font-size:13px;cursor:pointer;
+    box-shadow:2px 2px 0 var(--ink);transition:transform .12s var(--spring),box-shadow .12s
   }
-  .tier input { position: absolute; opacity: 0; }
-  .tier:has(input:checked) { border-color: var(--ink); box-shadow: 0 0 0 1.5px var(--ink); }
-  .tier:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .tier .name { font-weight: 700; font-size: 0.92rem; }
-  .tier .price { font-size: 1.3rem; font-weight: 800; margin: 2px 0; }
-  .tier .desc { font-size: 0.78rem; color: var(--muted); }
-  .assets-note {
-    border: 1.5px dashed var(--line); border-radius: 10px; padding: 14px;
-    font-size: 0.88rem; color: var(--muted); background: #fff;
+  .navlinks .tab:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--ink)}
+  .navlinks .tab.on{background:var(--yellow);transform:translate(1px,1px);box-shadow:1px 1px 0 var(--ink)}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    font-weight:900;font-size:15px;cursor:pointer;border:var(--bd);border-radius:14px;
+    padding:12px 18px;background:var(--paper);color:var(--ink);
+    box-shadow:var(--shadow);transition:transform .12s var(--spring),box-shadow .12s;
+    display:inline-flex;align-items:center;gap:8px;line-height:1
   }
-  .assets-note b { color: var(--ink); }
-  button[type=submit] {
-    font: inherit; font-weight: 700; font-size: 1.02rem;
-    background: var(--ink); color: #fff; border: 0; border-radius: 10px;
-    padding: 14px 20px; cursor: pointer;
+  .btn:hover{transform:translate(-2px,-2px);box-shadow:var(--shadow-lg)}
+  .btn:active{transform:translate(2px,2px);box-shadow:var(--shadow-sm)}
+  .btn:focus-visible{outline:4px solid var(--purple);outline-offset:3px}
+  .btn.primary{background:var(--blue);color:#fff}
+  .btn.pink{background:var(--pink);color:#fff}
+  .btn.green{background:var(--green);color:#fff}
+  .btn.yellow{background:var(--yellow)}
+  .btn.big{font-size:18px;padding:15px 22px}
+  .btn.block{width:100%;justify-content:center}
+  .btn[disabled]{opacity:.45;cursor:not-allowed;box-shadow:var(--shadow-sm);transform:none}
+  .btn.sim{background:var(--pink);color:#fff;font-size:14px;padding:10px 14px}
+
+  .card{background:var(--paper);border:var(--bd);border-radius:18px;box-shadow:var(--shadow);padding:16px}
+  .kicker{display:inline-block;background:var(--ink);color:var(--yellow);font-weight:900;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;padding:5px 10px;border-radius:8px}
+
+  /* ---------- screens ---------- */
+  .screen{display:none;animation:pop .32s var(--spring)}
+  .screen.on{display:block}
+  @keyframes pop{from{opacity:0;transform:scale(.97) translateY(8px)}to{opacity:1;transform:none}}
+  .screen-head{padding:22px 0 12px}
+  .screen-head p.sub{margin-top:8px;font-weight:700;max-width:44ch}
+
+  /* ---------- intake ---------- */
+  .intake-grid{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:760px){.intake-grid{grid-template-columns:1.05fr .95fr}}
+  .dropzone{
+    border:4px dashed var(--ink);border-radius:16px;background:var(--paper);
+    padding:16px;cursor:pointer;transition:transform .12s var(--spring),background .15s
   }
-  button[type=submit]:hover { background: #000; }
-  button[type=submit]:disabled { opacity: 0.6; cursor: wait; }
-  .status { min-height: 1.4em; font-size: 0.92rem; }
-  .status.err { color: var(--accent); }
-  .success {
-    display: none; margin-top: 36px; border: 1.5px solid var(--ok);
-    border-radius: 12px; padding: 24px; background: #fff;
+  .dropzone:hover{transform:translateY(-2px);background:#FFF9E6}
+  .dz-logo{background:#EAF1FF}
+  .dz-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .dz-head .big-emoji{font-size:30px}
+  .dz-head small{display:block;font-weight:700;font-size:12.5px;opacity:.75}
+  .thumbs{display:flex;flex-wrap:wrap;gap:9px;min-height:56px;align-items:center}
+  .thumb{
+    width:56px;height:56px;border:3px solid var(--ink);border-radius:11px;
+    display:grid;place-items:center;font-weight:900;color:#fff;font-size:20px;
+    box-shadow:2px 2px 0 var(--ink);animation:thumbin .3s var(--spring)
   }
-  .success h2 { font-size: 1.3rem; margin-bottom: 8px; }
-  .success p { color: var(--muted); font-size: 0.95rem; margin-bottom: 6px; }
-  .success .order-id { font-family: ui-monospace, monospace; font-size: 0.85rem; color: var(--ink); }
-  footer { margin-top: 64px; font-size: 0.8rem; color: var(--muted); }
+  .thumb.logo{width:auto;padding:0 12px;height:56px;letter-spacing:-.02em;font-size:15px}
+  @keyframes thumbin{from{transform:scale(0) rotate(-12deg)}to{transform:none}}
+  .thumb-add{
+    width:56px;height:56px;border:3px dashed var(--ink);border-radius:11px;background:transparent;
+    font-size:26px;font-weight:900;cursor:pointer;color:var(--ink);display:grid;place-items:center
+  }
+  .field{margin-top:14px}
+  .field label{display:block;font-weight:900;font-size:13px;margin-bottom:6px}
+  .field input{
+    width:100%;font-family:inherit;font-weight:700;font-size:15px;padding:12px 13px;
+    border:var(--bd);border-radius:12px;background:var(--paper);color:var(--ink);box-shadow:var(--shadow-sm)
+  }
+  .field input:focus{outline:none;box-shadow:4px 4px 0 var(--blue);border-color:var(--blue)}
+  .tiers{display:grid;gap:10px;margin-top:6px}
+  .tier{
+    text-align:left;border:var(--bd);border-radius:14px;background:var(--paper);padding:12px 14px;
+    cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .12s var(--spring);position:relative
+  }
+  .tier:hover{transform:translate(-1px,-1px)}
+  .tier .t-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .tier .t-name{font-weight:900;font-size:15px}
+  .tier .t-price{font-weight:900;font-size:16px}
+  .tier .t-desc{font-weight:700;font-size:12.5px;opacity:.78;margin-top:4px}
+  .tier[aria-pressed="true"]{background:var(--yellow);transform:translate(1px,1px);box-shadow:2px 2px 0 var(--ink)}
+  .tier[aria-pressed="true"]::after{content:"✓";position:absolute;top:-12px;right:-10px;background:var(--green);
+    color:#fff;border:3px solid var(--ink);border-radius:50%;width:30px;height:30px;display:grid;place-items:center;
+    font-weight:900;box-shadow:2px 2px 0 var(--ink)}
+
+  /* ---------- dashboard ---------- */
+  .order-bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:16px}
+  .order-bar .chip{background:var(--paper);border:3px solid var(--ink);border-radius:999px;
+    padding:6px 12px;font-weight:800;font-size:13px;box-shadow:2px 2px 0 var(--ink);display:flex;align-items:center;gap:6px}
+  .order-bar .chip b{font-weight:900}
+
+  .crew-wrap{overflow-x:auto;overflow-y:hidden;padding:8px 2px 12px;-webkit-overflow-scrolling:touch}
+  .crew{position:relative;display:flex;gap:6px;min-width:520px}
+  .agent{flex:1 1 0;min-width:96px;text-align:center;padding:6px 2px;transition:transform .3s var(--spring)}
+  .ag-svg{width:74px;height:74px;display:block;margin:0 auto;filter:drop-shadow(3px 3px 0 var(--ink));
+    transition:transform .3s var(--spring)}
+  .agent .ag-name{font-weight:900;font-size:14px;margin-top:2px}
+  .agent .ag-role{font-weight:700;font-size:11px;opacity:.7}
+  .agent .pill{display:inline-block;margin-top:5px;font-weight:900;font-size:11px;padding:3px 9px;
+    border:3px solid var(--ink);border-radius:999px;background:#EDE7DA;box-shadow:1px 1px 0 var(--ink)}
+  .agent.idle .pill{background:#EDE7DA;color:#7a715f}
+  .agent.active .pill{background:var(--yellow);animation:pillpulse 1s infinite}
+  .agent.done .pill{background:var(--green);color:#fff}
+  .agent.active .ag-svg{animation:bob .9s var(--spring) infinite}
+  .agent.active{transform:translateY(-2px)}
+  @keyframes bob{0%,100%{transform:translateY(0) scale(1.02)}50%{transform:translateY(-7px) scale(1.06)}}
+  @keyframes pillpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}
+  .agent.lean-r{animation:leanR .6s var(--spring)}
+  .agent.lean-l{animation:leanL .6s var(--spring)}
+  @keyframes leanR{0%{}42%{transform:translateX(16px) rotate(9deg) scale(1.09)}100%{transform:none}}
+  @keyframes leanL{0%{}42%{transform:translateX(-16px) rotate(-9deg) scale(1.09)}100%{transform:none}}
+  .spark{position:absolute;z-index:5;font-size:30px;pointer-events:none;transform:translate(-50%,-50%) scale(0);
+    animation:spark .6s var(--spring)}
+  @keyframes spark{0%{transform:translate(-50%,-50%) scale(0) rotate(-20deg)}
+    45%{transform:translate(-50%,-50%) scale(1.5) rotate(10deg)}100%{opacity:0;transform:translate(-50%,-70%) scale(1) rotate(0)}}
+  /* handoff track dots */
+  .track{display:flex;align-items:center;justify-content:center;gap:8px;margin:2px 0 18px;flex-wrap:wrap}
+  .track .dot{width:12px;height:12px;border:3px solid var(--ink);border-radius:50%;background:var(--paper)}
+  .track .dot.on{background:var(--green)}
+  .track .lbl{font-weight:800;font-size:12px}
+
+  .grid2{display:grid;gap:16px;grid-template-columns:1fr}
+  @media(min-width:760px){.grid2{grid-template-columns:1.15fr .85fr}}
+
+  /* storyboard */
+  .board-strip{overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+  .board{display:flex;gap:10px;min-width:560px}
+  .scene{
+    flex:1 1 0;min-width:88px;border:3px solid var(--ink);border-radius:13px;background:#EDE7DA;
+    padding:9px 8px;text-align:center;box-shadow:var(--shadow-sm);transition:transform .3s var(--spring),background .3s
+  }
+  .scene .sc-emoji{font-size:24px;line-height:1}
+  .scene .sc-name{font-weight:900;font-size:11.5px;margin-top:4px}
+  .scene .sc-state{font-weight:800;font-size:10px;margin-top:5px;padding:2px 6px;border:2px solid var(--ink);
+    border-radius:999px;display:inline-block;background:#fff}
+  .scene.drafting{background:#FFF0C4;animation:wob .8s var(--spring) infinite}
+  .scene.drafted{background:var(--sky)}
+  .scene.approved{background:#D6FBE8}
+  .scene.rendered{background:var(--green);color:#fff}
+  .scene.rendered .sc-state{background:var(--ink);color:var(--yellow);border-color:var(--ink)}
+  .scene.pop-in{animation:scenepop .45s var(--spring)}
+  @keyframes scenepop{0%{transform:scale(.7) rotate(-6deg)}60%{transform:scale(1.12)}100%{transform:none}}
+  @keyframes wob{0%,100%{transform:rotate(-1.5deg)}50%{transform:rotate(1.5deg)}}
+
+  /* feed */
+  .feed{max-height:270px;overflow-y:auto;display:flex;flex-direction:column;gap:9px;padding-right:4px}
+  .feed .msg{display:flex;gap:9px;align-items:flex-start;animation:msgin .35s var(--spring)}
+  @keyframes msgin{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+  .feed .who{flex:0 0 auto;width:14px;height:14px;border:2px solid var(--ink);border-radius:50%;margin-top:3px}
+  .feed .txt{font-weight:700;font-size:13.5px}
+  .feed .txt b{font-weight:900}
+  .feed .txt.you{background:var(--yellow);border:2px solid var(--ink);border-radius:9px;padding:4px 8px}
+
+  /* render progress */
+  .prog-outer{height:26px;border:var(--bd);border-radius:999px;background:var(--paper);overflow:hidden;
+    box-shadow:var(--shadow-sm)}
+  .prog-inner{height:100%;width:0;background:repeating-linear-gradient(45deg,var(--green),var(--green) 12px,#19a865 12px,#19a865 24px);
+    transition:width .6s var(--spring)}
+  .prog-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-weight:800;font-size:13px}
+
+  /* approval gate */
+  .gate{border:var(--bd);border-radius:16px;padding:16px;background:var(--yellow);box-shadow:var(--shadow);
+    margin-top:16px;display:none}
+  .gate.show{display:block;animation:gatepop .4s var(--spring)}
+  .gate.pending{animation:gatepulse 1.3s infinite}
+  @keyframes gatepop{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}
+  @keyframes gatepulse{0%,100%{box-shadow:var(--shadow)}50%{box-shadow:8px 8px 0 var(--pink)}}
+  .gate .g-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+
+  /* ---------- delivery ---------- */
+  .deliver-grid{display:grid;gap:18px;grid-template-columns:1fr}
+  @media(min-width:760px){.deliver-grid{grid-template-columns:minmax(0,300px) 1fr;align-items:start}}
+  .player{position:relative;aspect-ratio:9/16;max-height:70vh;margin:0 auto;width:100%;
+    border:var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--shadow-lg);background:var(--blue)}
+  .poster{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;
+    padding:22px;text-align:center;transition:background .5s}
+  .poster .sc-tag{position:absolute;top:14px;left:14px;background:var(--ink);color:#fff;font-weight:900;
+    font-size:11px;padding:4px 9px;border-radius:8px;letter-spacing:.08em}
+  .poster .brandmark{position:absolute;top:14px;right:14px;font-weight:900;font-size:12px;color:#fff;opacity:.85}
+  .poster .cap{font-weight:900;font-size:clamp(22px,6vw,30px);color:#fff;line-height:1.08;
+    text-shadow:3px 3px 0 rgba(0,0,0,.35);animation:capin .5s var(--spring)}
+  @keyframes capin{from{opacity:0;transform:translateY(14px) scale(.9)}to{opacity:1;transform:none}}
+  .poster .shapes span{position:absolute;border:3px solid #fff;opacity:.5}
+  .poster .wmark{position:absolute;bottom:56px;font-weight:900;color:#fff;opacity:.55;font-size:12px;letter-spacing:.1em}
+  .player .p-bar{position:absolute;left:0;right:0;bottom:0;height:40px;background:rgba(0,0,0,.35);
+    display:flex;align-items:center;gap:10px;padding:0 12px}
+  .player .p-bar .pbtn{width:26px;height:26px;border:2px solid #fff;border-radius:7px;background:transparent;color:#fff;
+    font-weight:900;cursor:pointer;display:grid;place-items:center;font-size:12px;flex:0 0 auto}
+  .player .p-line{flex:1;height:6px;background:rgba(255,255,255,.35);border-radius:999px;overflow:hidden}
+  .player .p-line i{display:block;height:100%;width:0;background:#fff}
+  .player .p-time{color:#fff;font-weight:800;font-size:12px}
+  .player .playbig{position:absolute;inset:0;margin:auto;width:74px;height:74px;border-radius:50%;
+    border:4px solid var(--ink);background:var(--yellow);color:var(--ink);font-size:30px;cursor:pointer;
+    box-shadow:var(--shadow);display:grid;place-items:center;z-index:3}
+  .player.playing .playbig{display:none}
+
+  .share-box{background:#EAF1FF;border:3px solid var(--ink);border-radius:12px;padding:11px 12px;
+    font-weight:700;font-size:13.5px;box-shadow:var(--shadow-sm)}
+  .upsell{background:var(--pink);color:#fff;border:var(--bd);border-radius:16px;padding:15px;box-shadow:var(--shadow)}
+  .upsell h3{color:#fff}
+
+  /* ---------- buildathon tv (featured "now playing" + program guide) ---------- */
+  /* Broadcast-TV structure, rebuilt in Pop Studio language:
+     a big featured surface (left) + a program-guide list of premieres (right),
+     channel-surf by click / arrow keys / swipe. */
+  .tv-top{display:grid;gap:16px;grid-template-columns:1fr}
+  @media(min-width:760px){.tv-top{grid-template-columns:minmax(0,330px) 1fr;align-items:start}}
+
+  .tuner{position:relative}
+  .tv-screen{position:relative;aspect-ratio:9/16;max-height:58vh;width:100%;margin:0 auto;
+    border:var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--shadow-lg);background:var(--blue)}
+  .tv-stage{position:absolute;inset:0}
+  .tv-poster{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;
+    padding:16px 16px 24px;overflow:hidden}
+  .tv-poster .shp{position:absolute;border:4px solid rgba(255,255,255,.6)}
+  .tv-poster .pv-name{position:relative;z-index:2;font-weight:900;color:#fff;font-size:clamp(20px,5vw,26px);
+    line-height:1.05;text-shadow:3px 3px 0 rgba(0,0,0,.28)}
+  .tv-poster .pv-tag{position:relative;z-index:2;font-weight:700;color:#fff;font-size:13.5px;opacity:.95;margin-top:4px}
+  .tv-stage.flip{animation:tvflip .5s var(--spring)}
+  @keyframes tvflip{0%{transform:scale(1) rotate(0)}32%{transform:scale(.86) rotate(-2.5deg)}
+    68%{transform:scale(1.05) rotate(1.5deg)}100%{transform:none}}
+
+  .tv-onair{position:absolute;top:12px;left:12px;z-index:4;background:var(--pink);color:#fff;font-weight:900;
+    font-size:11px;letter-spacing:.05em;padding:5px 9px;border:3px solid var(--ink);border-radius:9px;
+    box-shadow:2px 2px 0 var(--ink);transform:rotate(-4deg);display:inline-flex;align-items:center;gap:6px}
+  .tv-onair .d{width:8px;height:8px;border-radius:50%;background:#fff;animation:pillpulse 1s infinite}
+  .tv-osd{position:absolute;top:12px;right:12px;z-index:4;background:var(--yellow);color:var(--ink);font-weight:900;
+    font-size:12px;padding:5px 9px;border:3px solid var(--ink);border-radius:9px;box-shadow:2px 2px 0 var(--ink);
+    transform:rotate(3deg);opacity:0}
+  .tv-osd.flash{animation:osdpop 1.3s var(--spring) forwards}
+  @keyframes osdpop{0%{opacity:0;transform:scale(1.5) rotate(-8deg)}18%{opacity:1;transform:scale(1) rotate(3deg)}
+    72%{opacity:1;transform:scale(1) rotate(3deg)}100%{opacity:0;transform:scale(1) rotate(3deg)}}
+  .tv-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;width:72px;height:72px;
+    border-radius:50%;border:4px solid var(--ink);background:var(--yellow);color:var(--ink);font-size:28px;cursor:pointer;
+    box-shadow:var(--shadow);display:grid;place-items:center}
+  .tv-play:focus-visible{outline:4px solid var(--purple);outline-offset:3px}
+  .tv-screen.playing .tv-play{display:none}
+  .tv-flash{position:absolute;inset:0;z-index:5;background:#fff;opacity:0;pointer-events:none}
+  .tv-flash.go{animation:tvflash .42s ease}
+  @keyframes tvflash{0%{opacity:.85}22%{opacity:.2}100%{opacity:0}}
+  .tv-prog{position:absolute;left:0;right:0;bottom:0;height:8px;background:rgba(0,0,0,.28);z-index:4}
+  .tv-prog i{display:block;height:100%;width:0;background:var(--yellow);transition:width .1s linear}
+
+  .tv-ctrls{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:12px}
+  .chpad-btn{font-family:inherit;font-weight:900;font-size:13px;cursor:pointer;background:var(--paper);
+    border:3px solid var(--ink);border-radius:11px;padding:8px 12px;box-shadow:2px 2px 0 var(--ink);
+    transition:transform .12s var(--spring),box-shadow .12s}
+  .chpad-btn:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--ink)}
+  .chpad-btn:active{transform:translate(1px,1px);box-shadow:1px 1px 0 var(--ink)}
+  .chpad-btn:focus-visible,.snd-toggle:focus-visible{outline:4px solid var(--purple);outline-offset:2px}
+  .ch-readout{font-weight:900;font-size:14px;background:var(--sky);border:3px solid var(--ink);border-radius:11px;
+    padding:7px 12px;box-shadow:2px 2px 0 var(--ink)}
+  .snd-toggle{font-family:inherit;font-size:16px;cursor:pointer;background:var(--paper);border:3px solid var(--ink);
+    border-radius:11px;padding:6px 10px;box-shadow:2px 2px 0 var(--ink);line-height:1}
+  .surf-hint{font-weight:700;font-size:12px;opacity:.7;text-align:center;margin-top:10px}
+
+  .guide-head{font-weight:900;font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .guide-rows{display:flex;flex-direction:column;gap:8px}
+  .grow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;text-align:left;width:100%;
+    font-family:inherit;background:var(--paper);border:3px solid var(--ink);border-radius:13px;padding:8px 10px;
+    cursor:pointer;box-shadow:2px 2px 0 var(--ink);transition:transform .12s var(--spring),box-shadow .12s}
+  .grow:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--ink)}
+  .grow:focus-visible{outline:4px solid var(--purple);outline-offset:2px}
+  .grow.tuned{background:var(--yellow);transform:translate(1px,1px);box-shadow:1px 1px 0 var(--ink)}
+  .g-thumb{position:relative;width:46px;height:46px;flex:0 0 auto;border:3px solid var(--ink);border-radius:11px;
+    display:grid;place-items:center;color:#fff;font-weight:900;font-size:20px;text-shadow:1px 1px 0 rgba(0,0,0,.25)}
+  .g-num{position:absolute;top:-9px;left:-9px;background:var(--ink);color:var(--yellow);font-size:10px;font-weight:900;
+    border:2px solid var(--paper);border-radius:7px;padding:1px 4px;transform:rotate(-6deg);box-shadow:1px 1px 0 rgba(0,0,0,.3)}
+  .g-meta{min-width:0}
+  .g-meta b{display:block;font-weight:900;font-size:14px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g-meta small{display:block;font-weight:700;font-size:11.5px;opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .g-badge{flex:0 0 auto;font-weight:900;font-size:10.5px;letter-spacing:.03em;padding:5px 8px;border:2px solid var(--ink);
+    border-radius:999px;box-shadow:1px 1px 0 var(--ink);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+  .g-badge.on-air{background:var(--pink);color:#fff}
+  .g-badge.on-air .d{width:7px;height:7px;border-radius:50%;background:#fff;animation:pillpulse 1s infinite}
+  .g-badge.next{background:var(--sky);color:var(--ink)}
+
+  /* claim CTA (shared with Pop Studio) */
+  .qr-cta{display:grid;gap:16px;grid-template-columns:1fr;align-items:center;margin-top:18px}
+  @media(min-width:640px){.qr-cta{grid-template-columns:auto 1fr}}
+  .qr{width:150px;height:150px;background:#fff;border:var(--bd);border-radius:12px;padding:10px;box-shadow:var(--shadow);
+    display:grid}
+  .qr .qgrid{display:grid;width:100%;height:100%}
+  .qr .qgrid i{width:100%;height:100%}
+
+  /* confetti */
+  #confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:60}
+  .confetti-bit{position:absolute;width:12px;height:16px;border:2px solid var(--ink);will-change:transform}
+
+  /* toast — kept bottom-CENTER so it never sits under the bottom-right hosting widget */
+  #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(120px);z-index:70;
+    background:var(--ink);color:#fff;font-weight:800;padding:11px 16px;border-radius:12px;
+    box-shadow:var(--shadow);transition:transform .3s var(--spring);max-width:88vw;text-align:center;font-size:14px}
+  #toast.show{transform:translateX(-50%) translateY(0)}
+
+  .footnote{font-weight:700;font-size:12px;opacity:.65;margin-top:8px}
+  .hint-banner{background:var(--purple);color:#fff;border:var(--bd);border-radius:14px;padding:12px 15px;
+    box-shadow:var(--shadow);display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:14px 0}
+  .hint-banner b{font-weight:900}
+  @media (prefers-reduced-motion: reduce){*{animation-duration:.001s!important}}
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <div class="logo">Launch<span>Reel</span></div>
-    <h1>Your launch trailer, in minutes.</h1>
-    <p class="sub">Send your logo + screenshots (or just your URL). Get back a branded 30-second motion-graphics trailer with voiceover — made by an agent studio, while you watch.</p>
-    <span class="badge">● <b>LIVE</b> from the Hermes Buildathon, Bangalore — trailers delivered same afternoon</span>
-  </header>
+<div class="bg-deco" aria-hidden="true">
+  <span class="b1">🎬</span><span class="b2">🍿</span><span class="b3">⭐️</span>
+</div>
 
-  <form id="order-form" novalidate>
-    <fieldset id="form-fields">
-      <label>Product name
-        <input type="text" name="productName" required maxlength="100" placeholder="Ledgerly">
-      </label>
-      <label>One-liner
-        <span class="hint">One sentence on what it does — this drives your script.</span>
-        <input type="text" name="oneLiner" required maxlength="200" placeholder="Bookkeeping on autopilot for Indian SMBs">
-      </label>
-      <label>Email
-        <span class="hint">Your trailer link lands here (and on Telegram).</span>
-        <input type="email" name="email" required placeholder="founder@ledgerly.in">
-      </label>
-      <label>Product URL <span class="hint">(optional — skip it if you're not deployed yet)</span>
-        <input type="url" name="url" placeholder="https://…">
-      </label>
+<!-- ===================== PERSISTENT NAV ===================== -->
+<header class="nav">
+  <div class="nav-inner">
+    <div class="logo">
+      <svg class="reel-badge" viewBox="0 0 40 40" aria-hidden="true">
+        <rect x="3" y="3" width="34" height="34" rx="11" fill="var(--blue)" stroke="var(--ink)" stroke-width="3.5"/>
+        <circle cx="20" cy="20" r="10" fill="var(--yellow)" stroke="var(--ink)" stroke-width="3"/>
+        <path d="M17 15 L26 20 L17 25 Z" fill="var(--ink)"/>
+      </svg>
+      <span class="wm"><b>Launch</b><em>Reel</em></span>
+    </div>
+    <nav class="navlinks" aria-label="Screens">
+      <button class="tab on" data-go="intake">Intake</button>
+      <button class="tab" data-go="dashboard">Job Board</button>
+      <button class="tab" data-go="delivery">Delivery</button>
+      <button class="tab" data-go="tv">Buildathon TV</button>
+      <button class="btn sim" id="simBtn" type="button">▶ Simulate order</button>
+    </nav>
+  </div>
+</header>
 
-      <div class="tiers" role="radiogroup" aria-label="Choose your tier">
-        <label class="tier"><input type="radio" name="tier" value="teaser" checked>
-          <span class="name">Teaser</span><span class="price">Free</span>
-          <span class="desc">~10-sec watermarked teaser, premieres on Buildathon TV</span>
-        </label>
-        <label class="tier"><input type="radio" name="tier" value="trailer">
-          <span class="name">Launch Trailer</span><span class="price">₹999</span>
-          <span class="desc">Polished 30-sec trailer, clean export + premiere page</span>
-        </label>
-        <label class="tier"><input type="radio" name="tier" value="pack">
-          <span class="name">Content Pack</span><span class="price">₹2,999</span>
-          <span class="desc">Trailer + 3 social posts + OG images + hero copy</span>
-        </label>
+<main class="wrap">
+
+  <!-- ===================== SCREEN 1 · INTAKE ===================== -->
+  <section id="screen-intake" class="screen on" aria-label="Order intake">
+    <div class="screen-head">
+      <span class="kicker">New order</span>
+      <h1 style="margin-top:10px">Let's make your<br>launch trailer 🎬</h1>
+      <p class="sub">Drop your logo + a few screenshots. Our little crew turns them into a branded 30-second trailer with voiceover — <b>in minutes</b>.</p>
+    </div>
+
+    <div class="intake-grid">
+      <div>
+        <div class="card">
+          <div class="dropzone dz-logo" id="dzLogo" role="button" tabindex="0" aria-label="Add your logo">
+            <div class="dz-head">
+              <span class="big-emoji">🏷️</span>
+              <div><h3>Your logo</h3><small>Tap to drop it in (SVG / PNG)</small></div>
+            </div>
+            <div class="thumbs" id="logoThumbs">
+              <button class="thumb-add" id="logoAdd" type="button" aria-label="Add logo">+</button>
+            </div>
+          </div>
+
+          <div class="dropzone" id="dzShots" role="button" tabindex="0" style="margin-top:14px" aria-label="Add screenshots">
+            <div class="dz-head">
+              <span class="big-emoji">🖼️</span>
+              <div><h3>Screenshots <small style="display:inline">up to 6</small></h3><small>Tap to add product shots</small></div>
+            </div>
+            <div class="thumbs" id="shotThumbs">
+              <button class="thumb-add" id="shotAdd" type="button" aria-label="Add screenshot">+</button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="assets-note">
-        <b>Assets next:</b> after you order, our Telegram bot DMs you to collect your logo and up to 6 screenshots. No deployed site needed — uploads work fine.
+      <div>
+        <div class="card">
+          <div class="field">
+            <label for="pName">Product name</label>
+            <input id="pName" type="text" placeholder="e.g. Ledgerly" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="pOne">One-liner</label>
+            <input id="pOne" type="text" placeholder="e.g. Bookkeeping on autopilot" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="pEmail">Email <small style="font-weight:700;opacity:.6">(we send the reel here)</small></label>
+            <input id="pEmail" type="email" placeholder="founder@yourstartup.com" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="pUrl">Website <small style="font-weight:700;opacity:.6">(optional — Scout will snoop 🔍)</small></label>
+            <input id="pUrl" type="text" placeholder="yourstartup.com" autocomplete="off">
+          </div>
+        </div>
+
+        <h3 style="margin:18px 0 10px">Pick a tier</h3>
+        <div class="tiers" id="tiers">
+          <button class="tier" data-tier="free" aria-pressed="false" type="button">
+            <div class="t-top"><span class="t-name">Free teaser</span><span class="t-price">₹0</span></div>
+            <div class="t-desc">~10-sec watermarked teaser · claim by QR</div>
+          </button>
+          <button class="tier" data-tier="launch" aria-pressed="true" type="button">
+            <div class="t-top"><span class="t-name">Launch Trailer ⭐</span><span class="t-price">₹999</span></div>
+            <div class="t-desc">Polished 30-sec · clean export · premiere page</div>
+          </button>
+          <button class="tier" data-tier="pack" aria-pressed="false" type="button">
+            <div class="t-top"><span class="t-name">Content Pack</span><span class="t-price">₹2,999</span></div>
+            <div class="t-desc">Trailer + 3 social posts + OG images + hero copy</div>
+          </button>
+        </div>
+
+        <button class="btn primary big block" id="makeBtn" type="button" style="margin-top:18px">🚀 Make my trailer</button>
+        <p class="footnote">No card needed to preview. Delivered to your email + a shareable premiere page.</p>
       </div>
-
-      <button type="submit" id="submit-btn">Get my trailer →</button>
-      <p class="status" id="status" role="status"></p>
-    </fieldset>
-  </form>
-
-  <section class="success" id="success" aria-live="polite">
-    <h2>Order in. 🎬</h2>
-    <p>Your order id: <span class="order-id" id="order-id"></span></p>
-    <p id="success-detail">Now message our Telegram bot to drop your assets — the pipeline starts the moment your logo lands.</p>
-    <p><b id="bot-link">Telegram bot link coming up — ask at the LaunchReel table.</b></p>
+    </div>
   </section>
 
-  <footer>
-    LaunchReel · GrowthX × Hermes Buildathon, Bangalore · Built live on the floor, 2026-07-12
-  </footer>
+  <!-- ===================== SCREEN 2 · JOB DASHBOARD ===================== -->
+  <section id="screen-dashboard" class="screen" aria-label="Job dashboard">
+    <div class="screen-head">
+      <span class="kicker">Live pipeline</span>
+      <h1 style="margin-top:10px">The crew is on it 🎬</h1>
+    </div>
+
+    <div class="order-bar" id="orderBar">
+      <span class="chip">🏷️ <b id="obName">Ledgerly</b></span>
+      <span class="chip">💬 <span id="obOne">Bookkeeping on autopilot</span></span>
+      <span class="chip">🎟️ <b id="obTier">₹999 Launch Trailer</b></span>
+      <button class="btn yellow" id="rerunBtn" type="button" style="padding:8px 12px;font-size:13px;margin-left:auto">▶ Re-run</button>
+    </div>
+
+    <div class="card" style="padding:12px 10px">
+      <div class="crew-wrap">
+        <div class="crew" id="crew"><!-- agents injected --></div>
+      </div>
+      <div class="track" id="track"></div>
+    </div>
+
+    <div class="grid2" style="margin-top:16px">
+      <div class="card">
+        <h3 style="margin-bottom:12px">🎞️ Storyboard — 6 scenes</h3>
+        <div class="board-strip">
+          <div class="board" id="board"><!-- scenes injected --></div>
+        </div>
+
+        <div style="margin-top:16px">
+          <h3 style="margin-bottom:10px">⚙️ Render</h3>
+          <div class="prog-outer"><div class="prog-inner" id="prog"></div></div>
+          <div class="prog-row"><span id="progLabel">Waiting for approval…</span><span id="progEta">ETA —</span></div>
+        </div>
+
+        <!-- APPROVAL GATE — genuinely pauses the pipeline until Approve is clicked -->
+        <div class="gate" id="gate" aria-live="polite">
+          <h3>👀 Your call, boss</h3>
+          <p style="font-weight:700;margin-top:6px">Director drafted all 6 scenes. Approve to start the render, or ask for one revision.</p>
+          <div class="g-row">
+            <button class="btn green" id="approveBtn" type="button">✅ Approve &amp; render</button>
+            <button class="btn" id="reviseBtn" type="button">✏️ Request 1 revision</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom:12px">📣 Status feed</h3>
+        <div class="feed" id="feed"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN 3 · DELIVERY ===================== -->
+  <section id="screen-delivery" class="screen" aria-label="Finished trailer">
+    <div class="screen-head">
+      <span class="kicker">Delivered</span>
+      <h1 style="margin-top:10px">Your reel is ready 🎉</h1>
+      <p class="sub"><b id="dvName">Ledgerly</b> · 30-sec vertical launch trailer · 1080×1920</p>
+    </div>
+
+    <div class="deliver-grid">
+      <div class="player" id="player">
+        <div class="poster" id="poster">
+          <span class="sc-tag" id="posterTag">SCENE 1 · HOOK</span>
+          <span class="brandmark" id="posterBrand">LEDGERLY</span>
+          <div class="shapes" aria-hidden="true">
+            <span style="width:80px;height:80px;border-radius:50%;top:18%;left:10%"></span>
+            <span style="width:60px;height:60px;top:64%;right:12%;transform:rotate(20deg)"></span>
+          </div>
+          <div class="cap" id="posterCap">Still doing books at midnight?</div>
+          <div class="wmark" id="posterWmark"></div>
+        </div>
+        <button class="playbig" id="playBig" type="button" aria-label="Play trailer">▶</button>
+        <div class="p-bar">
+          <button class="pbtn" id="pbtn" type="button" aria-label="Play or pause">▶</button>
+          <div class="p-line"><i id="pline"></i></div>
+          <span class="p-time" id="ptime">0:00</span>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn primary" id="dlBtn" type="button">⬇️ Download MP4</button>
+          <button class="btn pink" id="xBtn" type="button">𝕏 Share to X</button>
+        </div>
+
+        <div style="margin-top:16px">
+          <h3 style="margin-bottom:8px">Prefilled post</h3>
+          <div class="share-box" id="shareCopy">We just launched <b>Ledgerly</b> 🚀 Bookkeeping on autopilot for founders. Watch our 30-sec launch trailer 👇 Made in minutes with @LaunchReel · #BuildathonTV<br>▶ launchreel.tv/p/ledgerly</div>
+        </div>
+
+        <div class="upsell" style="margin-top:18px">
+          <h3>✨ Love it? Level up</h3>
+          <p style="font-weight:700;margin-top:6px">Remove the watermark and get the full <b>Content Pack</b> — 3 social posts, OG images, and hero copy to match.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn yellow" id="upBtn" type="button">Upgrade to ₹2,999 Pack</button>
+            <button class="btn" id="rmwBtn" type="button">Remove watermark · ₹999</button>
+          </div>
+        </div>
+
+        <p class="footnote">Also sent to your email + your private premiere page. Add it to <b>Buildathon TV</b> with one tap.</p>
+        <button class="btn green" id="toTvBtn" type="button" style="margin-top:8px">📺 Put it on Buildathon TV</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SCREEN 4 · BUILDATHON TV ===================== -->
+  <!-- Merged screen: Broadcast-TV structure (featured "now playing" + program
+       guide + channel-surf) rebuilt in Pop Studio's cream/primary/sticker style. -->
+  <section id="screen-tv" class="screen" aria-label="Buildathon TV gallery">
+    <div class="screen-head">
+      <span class="kicker">Live at the event</span>
+      <h1 style="margin-top:10px">Buildathon TV 📺</h1>
+      <p class="sub">One big screen on the wall, every founder's premiere in the guide. Channel-surf the launches — then scan to claim your own.</p>
+    </div>
+
+    <div class="tv-top">
+      <!-- FEATURED "now playing" surface -->
+      <div class="tuner">
+        <div class="tv-screen" id="tvScreen">
+          <div class="tv-stage" id="tvStage"><!-- channel poster injected --></div>
+          <span class="tv-onair"><span class="d"></span>ON AIR</span>
+          <span class="tv-osd" id="tvOsd">CH 01</span>
+          <button class="tv-play" id="tvPlay" type="button" aria-label="Play this premiere">▶</button>
+          <div class="tv-prog"><i id="tvProgI"></i></div>
+          <div class="tv-flash" id="tvFlash" aria-hidden="true"></div>
+        </div>
+        <div class="tv-ctrls">
+          <button class="chpad-btn" id="chPrev" type="button" aria-label="Previous channel">◀ Prev</button>
+          <span class="ch-readout">CH <b id="chNum">01</b></span>
+          <button class="chpad-btn" id="chNext" type="button" aria-label="Next channel">Next ▶</button>
+          <button class="snd-toggle" id="sndBtn" type="button" aria-pressed="false" aria-label="Toggle channel-surf sound">🔇</button>
+        </div>
+        <p class="surf-hint">Click a show, tap ◀ ▶, use arrow keys, or swipe the screen to channel-surf.</p>
+      </div>
+
+      <!-- PROGRAM GUIDE list of premieres -->
+      <div class="guide">
+        <div class="guide-head">🗂️ Now premiering — pick a channel</div>
+        <div class="guide-rows" id="guideRows" role="group" aria-label="Premiere channels"><!-- channels injected --></div>
+      </div>
+    </div>
+
+    <div class="hint-banner" style="background:var(--blue);margin-top:20px">
+      <span style="font-size:28px">📈</span>
+      <div><b>2,481</b> founders watched premieres today · <b>612</b> teasers claimed by QR</div>
+    </div>
+
+    <div class="card qr-cta">
+      <div class="qr"><div class="qgrid" id="qr" aria-label="QR code placeholder"></div></div>
+      <div>
+        <h2>Get your free teaser 🎁</h2>
+        <p style="font-weight:700;margin-top:8px;max-width:40ch">Scan the code, drop your email, and we'll build you a 10-second watermarked teaser on the spot. Upgrade anytime.</p>
+        <button class="btn pink big" id="claimBtn" type="button" style="margin-top:14px">Claim my teaser →</button>
+      </div>
+    </div>
+  </section>
+
 </main>
 
+<div id="confetti" aria-hidden="true"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
 <script>
-// Set after `npx convex dev` provisions the deployment (https://<name>.convex.site)
-const CONVEX_SITE_URL = window.CONVEX_SITE_URL || "";
+"use strict";
+/* ============================================================================
+   LaunchReel — FINAL merged mock (Pop Studio × Broadcast TV)
+   ONE state object drives 4 screens: intake · dashboard · delivery · tv.
+   Read this block first — it is the implementation contract.
+   ============================================================================ */
+(function(){
+  var $  = function(s,r){return (r||document).querySelector(s);};
+  var $$ = function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));};
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 
-const form = document.getElementById("order-form");
-const statusEl = document.getElementById("status");
-const btn = document.getElementById("submit-btn");
-
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  statusEl.textContent = "";
-  statusEl.classList.remove("err");
-
-  const data = Object.fromEntries(new FormData(form).entries());
-  if (!data.productName?.trim() || !data.oneLiner?.trim() || !data.email?.trim()) {
-    statusEl.textContent = "Product name, one-liner and email are required.";
-    statusEl.classList.add("err");
-    return;
-  }
-  if (!CONVEX_SITE_URL) {
-    statusEl.textContent = "Backend not wired yet — grab us at the LaunchReel table and we'll take your order directly.";
-    statusEl.classList.add("err");
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = "Placing order…";
-  try {
-    const res = await fetch(CONVEX_SITE_URL + "/api/order", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: data.email.trim(),
-        productName: data.productName.trim(),
-        oneLiner: data.oneLiner.trim(),
-        url: data.url?.trim() || undefined,
-        tier: data.tier,
-      }),
+  /* ---------------------------------------------------------------
+     BACKEND CONFIG — Convex HTTP endpoints (convex/http.ts)
+     Set once after `npx convex dev` provisions the deployment: either a
+     script tag above this one that sets window.CONVEX_SITE_URL to
+     'https://<name>.convex.site', or localStorage.setItem('CONVEX_SITE_URL', ...).
+     Empty = orders run the pipeline theater only (no DB write) with a notice.
+     --------------------------------------------------------------- */
+  var CONVEX_SITE_URL = window.CONVEX_SITE_URL || localStorage.getItem('CONVEX_SITE_URL') || '';
+  var TIER_API = { free:'teaser', launch:'trailer', pack:'pack' }; // UI tier -> convex schema tier
+  function apiPost(path, body){
+    return fetch(CONVEX_SITE_URL + path, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    }).then(function(res){
+      return res.json().then(function(j){ if(!res.ok) throw new Error(j.error||('HTTP '+res.status)); return j; });
     });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error || "order failed");
-    document.getElementById("order-id").textContent = body.jobId;
-    document.getElementById("form-fields").style.display = "none";
-    document.getElementById("success").style.display = "block";
-    document.getElementById("success").scrollIntoView({ behavior: "smooth" });
-  } catch (err) {
-    statusEl.textContent = "Couldn't place the order (" + err.message + "). Try again or find us at the table.";
-    statusEl.classList.add("err");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Get my trailer →";
   }
-});
+  var EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+  /* ---------------------------------------------------------------
+     STATE — single source of truth for the whole mock
+     --------------------------------------------------------------- */
+  var state = {
+    screen  : 'intake',                                          // intake | dashboard | delivery | tv
+    tier    : 'launch',                                          // free | launch | pack
+    product : { name:'Ledgerly', one:'Bookkeeping on autopilot', email:'', url:'' },
+    assets  : { logo:false, shots:0 },                           // intake upload counts
+    pipeline: { runId:0, revisionUsed:false, approveResolve:null }, // dashboard run engine
+    tv      : { tunedIdx:0, playing:false, progTimer:null, soundOn:false, ac:null } // Buildathon TV
+  };
+
+  /* ---------------------------------------------------------------
+     DATA
+     --------------------------------------------------------------- */
+  var AGENTS = [
+    {id:'scout',      name:'Scout',      role:'Brand research', color:'var(--blue)'},
+    {id:'strategist', name:'Strategist', role:'Creative brief', color:'var(--purple)'},
+    {id:'director',   name:'Director',   role:'Storyboard',     color:'var(--pink)'},
+    {id:'renderer',   name:'Renderer',   role:'Motion + VO',    color:'var(--green)'},
+    {id:'publisher',  name:'Publisher',  role:'Premiere',       color:'var(--orange)'}
+  ];
+  var COLORS = {scout:'#2F5BFF',strategist:'#7C4DFF',director:'#FF3D8B',renderer:'#20C077',publisher:'#FF6B2C'};
+
+  var SCENES = [
+    {name:'Hook',    emoji:'🎣', cap:'Still doing books at midnight?',      bg:'#2F5BFF'},
+    {name:'Problem', emoji:'😵‍💫', cap:'Spreadsheets don\'t scale.',          bg:'#FF3D8B'},
+    {name:'Tour A',  emoji:'🖥️', cap:'Meet Ledgerly.',                      bg:'#7C4DFF'},
+    {name:'Tour B',  emoji:'✨', cap:'Auto-categorized. Auto-reconciled.',  bg:'#FF6B2C'},
+    {name:'Proof',   emoji:'⭐', cap:'1,200 founders already switched.',     bg:'#20C077'},
+    {name:'CTA',     emoji:'🚀', cap:'Start free → ledgerly.app',           bg:'#17130D'}
+  ];
+
+  var FEED = {
+    scout:[
+      "scanning your logo + screenshots… 🔍",
+      "pulled brand colors <b>#4F46E5</b> / <b>#F59E0B</b> from your screenshots",
+      "vibe check: fintech, clean, trustworthy — with a little playful energy"
+    ],
+    strategist:[
+      "got it. Angle = <b>“bookkeeping that runs itself.”</b>",
+      "writing a 30-second beat sheet…",
+      "brief locked. Over to you, Director 🎬"
+    ],
+    director:[
+      "blocking all 6 scenes…",
+      "Hook line: <b>“Still doing books at midnight?”</b> ✍️",
+      "storyboard drafted — need your ✅ to roll"
+    ],
+    renderer:[
+      "booting Remotion + ElevenLabs 🎧",
+      "recording VO in the <b>“Confident Founder”</b> voice",
+      "compositing motion graphics in your brand colors 🎨"
+    ],
+    publisher:[
+      "mastering final export — 1080×1920",
+      "premiere page is live 🚀 sending to your inbox"
+    ]
+  };
+
+  // Buildathon TV channels. Index 0 is "your" slot — it becomes your product
+  // after an order (see toTvBtn). `live` drives the ON AIR badge; `when` is the
+  // UP NEXT schedule time shown in the guide.
+  var CHANNELS = [
+    {ch:'01', name:'Ledgerly',  tag:'Bookkeeping on autopilot',       c:'var(--blue)',   when:'NOW',   live:true,  you:true},
+    {ch:'02', name:'Sproutbox', tag:'Plants, delivered monthly',      c:'var(--green)',  when:'18:04', live:false},
+    {ch:'03', name:'Nimbus',    tag:'Wikis that write themselves',    c:'var(--purple)', when:'18:05', live:false},
+    {ch:'04', name:'Forkly',    tag:'Recipes from your fridge',       c:'var(--orange)', when:'18:06', live:false},
+    {ch:'05', name:'PayPigeon', tag:'Invoices that chase themselves', c:'var(--pink)',   when:'18:07', live:false},
+    {ch:'06', name:'Deskless',  tag:'HR for frontline teams',         c:'#0EA5A0',       when:'18:08', live:false},
+    {ch:'07', name:'Loopline',  tag:'Customer feedback, sorted',      c:'#E4B000',       when:'18:09', live:false},
+    {ch:'08', name:'Cratepad',  tag:'Dev environments in a click',    c:'#5563E0',       when:'18:10', live:false}
+  ];
+
+  /* ---------------------------------------------------------------
+     AGENT SVG STICKERS
+     --------------------------------------------------------------- */
+  function svgFor(id){
+    var c = 'var(--'+ ({scout:'blue',strategist:'purple',director:'pink',renderer:'green',publisher:'orange'}[id]) +')';
+    var head = '<rect x="16" y="18" width="68" height="68" rx="24" fill="'+c+'" stroke="var(--ink)" stroke-width="4.5"/>';
+    var eye = function(x,y){return '<circle cx="'+x+'" cy="'+y+'" r="5" fill="var(--ink)"/>';};
+    var smile = '<path d="M39 65 Q50 76 61 65" fill="none" stroke="var(--ink)" stroke-width="4.5" stroke-linecap="round"/>';
+    var g = '';
+    if(id==='scout'){
+      g = smile
+        + '<rect x="41" y="45" width="18" height="7" fill="var(--ink)"/>'
+        + '<circle cx="37" cy="49" r="12" fill="var(--sky)" stroke="var(--ink)" stroke-width="4.5"/>'
+        + '<circle cx="63" cy="49" r="12" fill="var(--sky)" stroke="var(--ink)" stroke-width="4.5"/>'
+        + '<circle cx="33" cy="45" r="3" fill="#fff"/><circle cx="59" cy="45" r="3" fill="#fff"/>';
+    } else if(id==='strategist'){
+      g = eye(40,52)+eye(60,52)
+        + '<path d="M40 63 Q50 73 60 63" fill="none" stroke="var(--ink)" stroke-width="4.5" stroke-linecap="round"/>'
+        + '<line x1="34" y1="9" x2="30" y2="5" stroke="var(--yellow)" stroke-width="3.5" stroke-linecap="round"/>'
+        + '<line x1="66" y1="9" x2="70" y2="5" stroke="var(--yellow)" stroke-width="3.5" stroke-linecap="round"/>'
+        + '<circle cx="50" cy="13" r="10" fill="var(--yellow)" stroke="var(--ink)" stroke-width="4"/>'
+        + '<path d="M46 12 L50 8 L54 12" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round"/>'
+        + '<rect x="45" y="20" width="10" height="6" rx="2" fill="var(--ink)"/>';
+    } else if(id==='director'){
+      g = eye(40,50)+eye(60,50)
+        + '<path d="M40 62 Q50 71 60 62" fill="none" stroke="var(--ink)" stroke-width="4.5" stroke-linecap="round"/>'
+        + '<g transform="rotate(-13 50 21)">'
+        + '<ellipse cx="50" cy="22" rx="27" ry="12" fill="var(--ink)"/>'
+        + '<path d="M24 24 h52" stroke="#3a332a" stroke-width="4"/>'
+        + '<circle cx="70" cy="12" r="4" fill="var(--yellow)" stroke="var(--ink)" stroke-width="2"/>'
+        + '</g>';
+    } else if(id==='renderer'){
+      g = '<path d="M23 42 Q50 16 77 42" fill="none" stroke="var(--ink)" stroke-width="5.5" stroke-linecap="round"/>'
+        + '<rect x="14" y="42" width="13" height="21" rx="5" fill="var(--ink)"/>'
+        + '<rect x="73" y="42" width="13" height="21" rx="5" fill="var(--ink)"/>'
+        + '<line x1="50" y1="18" x2="50" y2="9" stroke="var(--ink)" stroke-width="4"/>'
+        + '<circle cx="50" cy="7" r="4.5" fill="var(--pink)" stroke="var(--ink)" stroke-width="2.5"/>'
+        + '<rect x="34" y="46" width="13" height="13" rx="3" fill="var(--ink)"/>'
+        + '<rect x="53" y="46" width="13" height="13" rx="3" fill="var(--ink)"/>'
+        + '<rect x="37" y="49" width="3.5" height="3.5" fill="#fff"/><rect x="56" y="49" width="3.5" height="3.5" fill="#fff"/>'
+        + '<rect x="39" y="69" width="22" height="6" rx="3" fill="var(--ink)"/>';
+    } else if(id==='publisher'){
+      g = eye(42,48)+eye(60,48)
+        + '<ellipse cx="49" cy="67" rx="8" ry="7" fill="var(--ink)"/>'
+        + '<g transform="rotate(-16 74 42)">'
+        + '<path d="M66 34 L88 27 L88 53 L66 46 Z" fill="var(--yellow)" stroke="var(--ink)" stroke-width="4" stroke-linejoin="round"/>'
+        + '<rect x="60" y="36" width="8" height="8" rx="2" fill="var(--ink)"/>'
+        + '</g>'
+        + '<path d="M90 32 q6 8 0 16" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>';
+    }
+    return '<svg class="ag-svg" viewBox="0 0 100 100" role="img" aria-label="'+id+' agent">'+head+g+'</svg>';
+  }
+
+  /* ---------------------------------------------------------------
+     BUILD STATIC DOM (crew, handoff track, storyboard, guide, QR)
+     --------------------------------------------------------------- */
+  var crewEl = $('#crew'), trackEl = $('#track'), boardEl = $('#board');
+  AGENTS.forEach(function(a){
+    var d = document.createElement('div');
+    d.className = 'agent idle';
+    d.id = 'agent-'+a.id;
+    d.innerHTML = svgFor(a.id)
+      + '<div class="ag-name">'+a.name+'</div>'
+      + '<div class="ag-role">'+a.role+'</div>'
+      + '<div class="pill">waiting</div>';
+    crewEl.appendChild(d);
+  });
+  var trackHtml = '';
+  AGENTS.forEach(function(a,i){
+    trackHtml += '<span class="dot" id="dot-'+i+'"></span>';
+    if(i<AGENTS.length-1) trackHtml += '<span class="lbl">🤝</span>';
+  });
+  trackEl.innerHTML = trackHtml;
+
+  SCENES.forEach(function(s,i){
+    var d = document.createElement('div');
+    d.className = 'scene idle';
+    d.id = 'scene-'+i;
+    d.innerHTML = '<div class="sc-emoji">'+s.emoji+'</div><div class="sc-name">'+s.name+'</div>'
+      + '<div class="sc-state">queued</div>';
+    boardEl.appendChild(d);
+  });
+
+  // QR placeholder (deterministic pattern + finder squares)
+  (function buildQR(){
+    var N=15, grid=$('#qr');
+    grid.style.gridTemplateColumns='repeat('+N+',1fr)';
+    grid.style.gridTemplateRows='repeat('+N+',1fr)';
+    function finder(r,c){ return (r<4&&c<4)||(r<4&&c>N-5)||(r>N-5&&c<4); }
+    var seed=7;
+    for(var r=0;r<N;r++){for(var c=0;c<N;c++){
+      var i=document.createElement('i');
+      var on;
+      if(finder(r,c)){
+        var fr=r>N-5?r-(N-5):r, fc=c>N-5?c-(N-5):c;
+        on = (fr===0||fr===3||fc===0||fc===3||(fr>=1&&fr<=2&&fc>=1&&fc<=2));
+      } else {
+        seed=(seed*1103515245+12345)&0x7fffffff;
+        on=((seed>>7)&1)===1;
+      }
+      i.style.background= on?'var(--ink)':'transparent';
+      grid.appendChild(i);
+    }}
+  })();
+
+  /* ---------------------------------------------------------------
+     NAVIGATION  (persistent nav + go(screen))
+     --------------------------------------------------------------- */
+  var screens = {intake:'#screen-intake',dashboard:'#screen-dashboard',delivery:'#screen-delivery',tv:'#screen-tv'};
+  function go(name){
+    state.screen = name;
+    Object.keys(screens).forEach(function(k){ $(screens[k]).classList.toggle('on', k===name); });
+    $$('.navlinks .tab').forEach(function(t){ t.classList.toggle('on', t.getAttribute('data-go')===name); });
+    if(name==='tv') initTuner();            // paint the featured surface on entry
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  $$('.navlinks .tab').forEach(function(t){
+    t.addEventListener('click', function(){ go(t.getAttribute('data-go')); });
+  });
+
+  /* ---------------------------------------------------------------
+     TOAST
+     --------------------------------------------------------------- */
+  var toastEl=$('#toast'), toastTimer;
+  function toast(msg){
+    toastEl.innerHTML=msg; toastEl.classList.add('show');
+    clearTimeout(toastTimer); toastTimer=setTimeout(function(){toastEl.classList.remove('show');},2200);
+  }
+
+  /* ---------------------------------------------------------------
+     INTAKE  (logo + screenshots + tier)
+     --------------------------------------------------------------- */
+  function addLogo(){
+    if(state.assets.logo) return;
+    state.assets.logo=true;
+    var name=($('#pName').value||'Brand').trim();
+    var chip=document.createElement('div');
+    chip.className='thumb logo';
+    chip.style.background='var(--blue)';
+    chip.textContent=name.slice(0,10);
+    $('#logoThumbs').insertBefore(chip, $('#logoAdd'));
+    $('#logoAdd').style.display='none';
+  }
+  var shotColors=['#FF3D8B','#7C4DFF','#20C077','#FF6B2C','#2F5BFF','#E4B000'];
+  function addShot(){
+    if(state.assets.shots>=6) { toast('Max 6 screenshots 📸'); return; }
+    state.assets.shots++;
+    var t=document.createElement('div');
+    t.className='thumb';
+    t.style.background=shotColors[(state.assets.shots-1)%shotColors.length];
+    t.textContent=state.assets.shots;
+    $('#shotThumbs').insertBefore(t, $('#shotAdd'));
+    if(state.assets.shots>=6) $('#shotAdd').style.display='none';
+  }
+  $('#logoAdd').addEventListener('click',function(e){e.stopPropagation();addLogo();});
+  $('#dzLogo').addEventListener('click',addLogo);
+  $('#dzLogo').addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();addLogo();}});
+  $('#shotAdd').addEventListener('click',function(e){e.stopPropagation();addShot();});
+  $('#dzShots').addEventListener('click',addShot);
+  $('#dzShots').addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();addShot();}});
+
+  var tierMap={free:'Free teaser',launch:'₹999 Launch Trailer',pack:'₹2,999 Content Pack'};
+  $$('#tiers .tier').forEach(function(b){
+    b.addEventListener('click',function(){
+      $$('#tiers .tier').forEach(function(x){x.setAttribute('aria-pressed','false');});
+      b.setAttribute('aria-pressed','true');
+      state.tier=b.getAttribute('data-tier');
+      syncOrderBar();
+    });
+  });
+
+  /* ---------------------------------------------------------------
+     DASHBOARD PIPELINE ENGINE
+     --------------------------------------------------------------- */
+  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+  function isAlive(id){ return id===state.pipeline.runId; }
+
+  function setAgent(id,st){
+    var el=$('#agent-'+id); if(!el) return;
+    el.className='agent '+st;
+    var pill=$('.pill',el);
+    pill.textContent = st==='active'?'working…' : st==='done'?'done ✓' : 'waiting';
+  }
+  function setDots(n){ AGENTS.forEach(function(a,i){ $('#dot-'+i).classList.toggle('on', i<n); }); }
+
+  function pushFeed(agentId, html){
+    var m=document.createElement('div'); m.className='msg';
+    if(agentId==='you'){
+      m.innerHTML='<span class="who" style="background:var(--yellow)"></span><div class="txt you"><b>You:</b> '+html+'</div>';
+    } else {
+      var nm=AGENTS.filter(function(a){return a.id===agentId;})[0].name;
+      m.innerHTML='<span class="who" style="background:'+COLORS[agentId]+'"></span><div class="txt"><b>'+nm+':</b> '+html+'</div>';
+    }
+    var feed=$('#feed'); feed.appendChild(m); feed.scrollTop=feed.scrollHeight;
+  }
+  function setScene(i,st){
+    var el=$('#scene-'+i); if(!el) return;
+    el.className='scene '+st+' pop-in';
+    setTimeout(function(){el.classList.remove('pop-in');},450);
+    var label={idle:'queued',drafting:'drafting…',drafted:'drafted',approved:'approved',rendered:'rendered ✓'}[st];
+    $('.sc-state',el).textContent=label;
+  }
+  function setProgress(pct,label,eta){
+    $('#prog').style.width=pct+'%';
+    if(label!=null) $('#progLabel').textContent=label;
+    if(eta!=null) $('#progEta').textContent=eta;
+  }
+
+  function highFive(fromId,toId){
+    var crew=$('#crew');
+    var a=$('#agent-'+fromId), b=$('#agent-'+toId);
+    a.classList.add('lean-r'); b.classList.add('lean-l');
+    setTimeout(function(){a.classList.remove('lean-r');b.classList.remove('lean-l');},650);
+    var ra=a.getBoundingClientRect(), rb=b.getBoundingClientRect(), rc=crew.getBoundingClientRect();
+    var midX=((ra.right+rb.left)/2)-rc.left;
+    var midY=(ra.top+ra.height*0.42)-rc.top;
+    var sp=document.createElement('div'); sp.className='spark';
+    sp.textContent = Math.random()<0.5?'✋':'💥';
+    sp.style.left=midX+'px'; sp.style.top=midY+'px';
+    crew.appendChild(sp);
+    setTimeout(function(){ if(sp.parentNode) sp.parentNode.removeChild(sp); },650);
+  }
+
+  function resetPipeline(){
+    AGENTS.forEach(function(a){ setAgent(a.id,'idle'); });
+    SCENES.forEach(function(s,i){ setScene(i,'idle'); });
+    setDots(0);
+    setProgress(0,'Waiting for approval…','ETA —');
+    $('#feed').innerHTML='';
+    state.pipeline.revisionUsed=false;
+    $('#reviseBtn').disabled=false;
+    $('#gate').className='gate';
+  }
+
+  function showGate(){
+    var g=$('#gate'); g.className='gate show pending';
+    setTimeout(function(){ g.scrollIntoView({behavior:'smooth',block:'center'}); },120);
+    return new Promise(function(res){ state.pipeline.approveResolve=res; });
+  }
+
+  async function feedSeq(id, msgs, token, gap){
+    for(var i=0;i<msgs.length;i++){
+      if(!isAlive(token)) return false;
+      pushFeed(id,msgs[i]);
+      await sleep(gap|| (700+Math.random()*500));
+      if(!isAlive(token)) return false;
+    }
+    return true;
+  }
+
+  async function runPipeline(){
+    var myId = ++state.pipeline.runId;
+    resetPipeline();
+    go('dashboard');
+    await sleep(400); if(!isAlive(myId))return;
+
+    // SCOUT
+    setAgent('scout','active');
+    if(!await feedSeq('scout',FEED.scout,myId))return;
+    highFive('scout','strategist'); setAgent('scout','done'); setDots(1); setAgent('strategist','active');
+    await sleep(500); if(!isAlive(myId))return;
+
+    // STRATEGIST
+    if(!await feedSeq('strategist',FEED.strategist,myId))return;
+    highFive('strategist','director'); setAgent('strategist','done'); setDots(2); setAgent('director','active');
+    await sleep(500); if(!isAlive(myId))return;
+
+    // DIRECTOR — draft scenes one by one
+    pushFeed('director',FEED.director[0]);
+    for(var i=0;i<SCENES.length;i++){
+      if(!isAlive(myId))return;
+      setScene(i,'drafting');
+      await sleep(360);
+      setScene(i,'drafted');
+      await sleep(140);
+    }
+    if(!await feedSeq('director',FEED.director.slice(1),myId))return;
+
+    // APPROVAL GATE — genuinely pauses until Approve resolves the promise
+    setProgress(0,'Awaiting your approval 👇','ETA —');
+    pushFeed('director','waiting on your ✅ …');
+    await showGate();
+    if(!isAlive(myId))return;
+    $('#gate').className='gate';
+
+    // approved -> render
+    setAgent('director','done'); setDots(3);
+    for(var j=0;j<SCENES.length;j++){ setScene(j,'approved'); }
+    highFive('director','renderer'); setAgent('renderer','active');
+    await sleep(400); if(!isAlive(myId))return;
+
+    // RENDERER
+    pushFeed('renderer',FEED.renderer[0]);
+    await sleep(700); if(!isAlive(myId))return;
+    pushFeed('renderer',FEED.renderer[1]);
+    for(var k=0;k<SCENES.length;k++){
+      if(!isAlive(myId))return;
+      setScene(k,'rendered');
+      var pct=Math.round((k+1)/SCENES.length*100);
+      var remain=(SCENES.length-(k+1))*6;
+      setProgress(pct,'Rendering scene '+(k+1)+' / '+SCENES.length, remain>0?('ETA ~0:'+(remain<10?'0':'')+remain):'ETA 0:02');
+      if(k===2) pushFeed('renderer',FEED.renderer[2]);
+      await sleep(720);
+    }
+    setProgress(100,'Render complete 🎉','done');
+    highFive('renderer','publisher'); setAgent('renderer','done'); setDots(4); setAgent('publisher','active');
+    await sleep(500); if(!isAlive(myId))return;
+
+    // PUBLISHER
+    if(!await feedSeq('publisher',FEED.publisher,myId))return;
+    setAgent('publisher','done'); setDots(5);
+    await sleep(600); if(!isAlive(myId))return;
+
+    // DELIVER
+    deliver();
+  }
+
+  // approve / revise handlers
+  $('#approveBtn').addEventListener('click',function(){
+    var r=state.pipeline.approveResolve;
+    if(r){ state.pipeline.approveResolve=null; $('#gate').className='gate'; pushFeed('you','approved! ship it 🚀'); r(); }
+  });
+  $('#reviseBtn').addEventListener('click',function(){
+    if(state.pipeline.revisionUsed || !state.pipeline.approveResolve) return;
+    state.pipeline.revisionUsed=true; $('#reviseBtn').disabled=true;
+    var myId=state.pipeline.runId;
+    $('#gate').className='gate show';       // stop pulsing while reworking
+    pushFeed('you','love it — can we punch up the Hook line? ✏️');
+    setAgent('director','active');
+    setScene(0,'drafting');
+    setTimeout(function(){
+      if(!isAlive(myId))return;
+      pushFeed('director','on it — new Hook: <b>“Your books, done while you sleep.”</b>');
+      setScene(0,'drafted');
+      setTimeout(function(){
+        if(!isAlive(myId))return;
+        pushFeed('director','revision in. Your ✅?');
+        $('#gate').className='gate show pending';
+      },900);
+    },1100);
+  });
+
+  /* ---------------------------------------------------------------
+     DELIVERY + CONFETTI
+     --------------------------------------------------------------- */
+  function deliver(){
+    go('delivery');
+    startPoster(true);
+    setTimeout(confettiBurst, 250);
+    toast('🎉 Your launch trailer is ready!');
+  }
+
+  function confettiBurst(){
+    var layer=$('#confetti');
+    var cols=['var(--blue)','var(--pink)','var(--yellow)','var(--green)','var(--orange)','var(--purple)'];
+    var n=90;
+    for(var i=0;i<n;i++){
+      (function(i){
+        var b=document.createElement('div'); b.className='confetti-bit';
+        var col=cols[i%cols.length];
+        b.style.background=col;
+        b.style.left=(Math.random()*100)+'vw';
+        b.style.top='-30px';
+        if(Math.random()<0.4) b.style.borderRadius='50%';
+        var dx=(Math.random()*2-1)*120;
+        var dur=1600+Math.random()*1400;
+        var rot=(Math.random()*720-360);
+        layer.appendChild(b);
+        b.animate([
+          {transform:'translate(0,0) rotate(0deg)',opacity:1},
+          {transform:'translate('+dx+'px,'+(window.innerHeight+80)+'px) rotate('+rot+'deg)',opacity:1}
+        ],{duration:dur,easing:'cubic-bezier(.3,.6,.5,1)',delay:Math.random()*250});
+        setTimeout(function(){ if(b.parentNode) b.parentNode.removeChild(b); }, dur+400);
+      })(i);
+    }
+  }
+
+  // delivery mini-trailer poster (cycles the 6 scenes)
+  var posterIdx=0, posterTimer=null, posterPlaying=false;
+  function paintPoster(i){
+    var s=SCENES[i];
+    var p=$('#poster');
+    p.style.background=s.bg;
+    $('#posterTag').textContent='SCENE '+(i+1)+' · '+s.name.toUpperCase();
+    var cap=$('#posterCap'); cap.textContent=s.cap;
+    cap.style.animation='none'; void cap.offsetWidth; cap.style.animation='';
+  }
+  function tickPoster(){
+    posterIdx=(posterIdx+1)%SCENES.length;
+    paintPoster(posterIdx);
+    updatePosterBar();
+  }
+  function updatePosterBar(){
+    var frac=(posterIdx+1)/SCENES.length;
+    $('#pline').style.width=(frac*100)+'%';
+    var sec=Math.round(frac*30);
+    $('#ptime').textContent='0:'+(sec<10?'0':'')+sec;
+  }
+  function startPoster(reset){
+    if(reset){ posterIdx=0; paintPoster(0); updatePosterBar(); }
+    posterPlaying=true;
+    $('#player').classList.add('playing');
+    $('#pbtn').textContent='❚❚';
+    clearInterval(posterTimer);
+    posterTimer=setInterval(tickPoster,1700);
+  }
+  function pausePoster(){
+    posterPlaying=false;
+    $('#player').classList.remove('playing');
+    $('#pbtn').textContent='▶';
+    clearInterval(posterTimer);
+  }
+  function togglePoster(){ posterPlaying?pausePoster():startPoster(false); }
+  $('#playBig').addEventListener('click',function(){ startPoster(true); });
+  $('#pbtn').addEventListener('click',togglePoster);
+  function refreshWatermark(){
+    $('#posterWmark').textContent = state.tier==='free' ? 'made with LAUNCHREEL' : '';
+  }
+  paintPoster(0);
+
+  // delivery action buttons
+  $('#dlBtn').addEventListener('click',function(){ toast('⬇️ Downloading '+($('#dvName').textContent)+'-trailer.mp4 (1080×1920)…'); });
+  $('#xBtn').addEventListener('click',function(){ toast('𝕏 Opening X with your post prefilled…'); });
+  $('#upBtn').addEventListener('click',function(){ toast('✨ Upgrading to the ₹2,999 Content Pack…'); });
+  $('#rmwBtn').addEventListener('click',function(){ $('#posterWmark').textContent=''; toast('🧼 Watermark removed — clean export unlocked'); });
+  $('#claimBtn').addEventListener('click',function(){
+    // QR -> email claim = the signup event (rubric: Signups 20x, live-DB-verified).
+    var email=(prompt('Where should we send your free teaser? (email)')||'').trim();
+    if(!email) return;
+    if(!EMAIL_RE.test(email)){ toast('✋ That email doesn’t look right — try again'); return; }
+    if(!CONVEX_SITE_URL){ toast('⚠️ Demo mode — claim not recorded'); return; }
+    apiPost('/api/signup', { email:email, source:'qr_claim' })
+      .then(function(){ toast('🎁 Teaser claimed — check your email!'); })
+      .catch(function(err){ toast('😖 Claim failed: '+esc(err.message)); });
+  });
+
+  // Delivery -> Buildathon TV: put YOUR trailer on the wall (channel 0), then tune to it.
+  $('#toTvBtn').addEventListener('click',function(){
+    var c=CHANNELS[0];
+    c.name = state.product.name || c.name;
+    c.tag  = state.product.one  || c.tag;
+    c.live = true; c.when='NOW';
+    renderGuide();
+    toast('📺 '+c.name+' is now on Buildathon TV!');
+    go('tv');
+    setTimeout(function(){ tuneTo(0,true); confettiBurst(); },520);
+  });
+
+  /* ---------------------------------------------------------------
+     BUILDATHON TV — featured "now playing" + program guide + surf
+     (Broadcast-TV structure, Pop Studio visuals)
+     --------------------------------------------------------------- */
+  function tvPoster(c){
+    var s1='width:120px;height:120px;border-radius:50%;top:-26px;left:-32px;';
+    var s2='width:78px;height:78px;top:34%;right:-24px;transform:rotate(18deg);';
+    var s3='width:52px;height:52px;border-radius:50%;bottom:104px;left:14px;';
+    return '<div class="tv-poster" style="background:'+c.c+'">'
+      + '<span class="shp" style="'+s1+'"></span>'
+      + '<span class="shp" style="'+s2+'"></span>'
+      + '<span class="shp" style="'+s3+'"></span>'
+      + '<span class="pv-name">'+esc(c.name)+'</span>'
+      + '<span class="pv-tag">'+esc(c.tag)+'</span>'
+      + '</div>';
+  }
+
+  function renderGuide(){
+    var rows=CHANNELS.map(function(c,i){
+      var mono=c.name.trim().charAt(0).toUpperCase();
+      var badge = c.live
+        ? '<span class="g-badge on-air"><span class="d"></span>ON AIR</span>'
+        : '<span class="g-badge next">NEXT '+c.when+'</span>';
+      return '<button class="grow" data-idx="'+i+'" type="button" aria-pressed="false" '
+        + 'aria-label="'+esc(c.name)+' — '+esc(c.tag)+', channel '+c.ch+'">'
+        + '<span class="g-thumb" style="background:'+c.c+'"><span class="g-num">'+c.ch+'</span>'+mono+'</span>'
+        + '<span class="g-meta"><b>'+esc(c.name)+'</b><small>'+esc(c.tag)+'</small></span>'
+        + badge
+        + '</button>';
+    }).join('');
+    $('#guideRows').innerHTML=rows;
+    $$('#guideRows .grow').forEach(function(r){
+      r.addEventListener('click', function(){ tuneTo(+r.getAttribute('data-idx'), true); });
+    });
+    // keep the current highlight after a re-render
+    highlightGuide();
+  }
+
+  function highlightGuide(){
+    $$('#guideRows .grow').forEach(function(r){
+      var on = (+r.getAttribute('data-idx'))===state.tv.tunedIdx;
+      r.classList.toggle('tuned', on);
+      r.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  function tvBurst(){
+    var sc=$('#tvScreen'); if(!sc) return;
+    var em=['✨','📺','⭐️','💥','🎬'][Math.floor(Math.random()*5)];
+    var sp=document.createElement('div'); sp.className='spark';
+    sp.textContent=em; sp.style.left='50%'; sp.style.top='46%'; sp.style.zIndex='6';
+    sc.appendChild(sp);
+    setTimeout(function(){ if(sp.parentNode) sp.parentNode.removeChild(sp); },650);
+  }
+
+  // Optional pop "boop" on channel change (muted by default; synth only, no assets).
+  function boop(){
+    if(!state.tv.soundOn) return;
+    try{
+      var AC=state.tv.ac||(state.tv.ac=new (window.AudioContext||window.webkitAudioContext)());
+      if(AC.state==='suspended') AC.resume();
+      var now=AC.currentTime;
+      var o=AC.createOscillator(), g=AC.createGain();
+      o.type='triangle';
+      o.frequency.setValueAtTime(520,now);
+      o.frequency.exponentialRampToValueAtTime(880,now+0.09);
+      g.gain.setValueAtTime(0.0001,now);
+      g.gain.exponentialRampToValueAtTime(0.08,now+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0006,now+0.16);
+      o.connect(g).connect(AC.destination); o.start(now); o.stop(now+0.18);
+    }catch(e){}
+  }
+
+  function stopTvPlay(){
+    state.tv.playing=false;
+    var sc=$('#tvScreen'); if(sc) sc.classList.remove('playing');
+    if(state.tv.progTimer){ clearInterval(state.tv.progTimer); state.tv.progTimer=null; }
+    var bar=$('#tvProgI'); if(bar) bar.style.width='0%';
+  }
+  function tvPlay(){
+    if(state.tv.playing) return;
+    state.tv.playing=true;
+    $('#tvScreen').classList.add('playing');
+    var start=Date.now(), dur=9000, bar=$('#tvProgI');
+    state.tv.progTimer=setInterval(function(){
+      var p=Math.min(100,(Date.now()-start)/dur*100);
+      bar.style.width=p+'%';
+      if(p>=100) stopTvPlay();
+    },80);
+  }
+
+  // Tune the featured surface to channel `i`. animate=true => bouncy pop blip.
+  function tuneTo(i, animate){
+    var n=CHANNELS.length;
+    state.tv.tunedIdx=((i%n)+n)%n;
+    var c=CHANNELS[state.tv.tunedIdx];
+    stopTvPlay();
+    var stage=$('#tvStage');
+    stage.innerHTML=tvPoster(c);
+    if(animate){
+      stage.classList.remove('flip'); void stage.offsetWidth; stage.classList.add('flip');
+      var fl=$('#tvFlash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+      tvBurst(); boop();
+    }
+    var osd=$('#tvOsd'); osd.textContent='CH '+c.ch;
+    osd.classList.remove('flash'); void osd.offsetWidth; osd.classList.add('flash');
+    $('#chNum').textContent=c.ch;
+    highlightGuide();
+    if(animate){
+      var row=$('#guideRows .grow[data-idx="'+state.tv.tunedIdx+'"]');
+      if(row) row.scrollIntoView({block:'nearest',behavior:'smooth'});
+    }
+  }
+  function channelStep(dir){ tuneTo(state.tv.tunedIdx+dir, true); }
+
+  function initTuner(){
+    if(!$('#guideRows').children.length) renderGuide();
+    tuneTo(state.tv.tunedIdx, false);
+  }
+
+  $('#chPrev').addEventListener('click',function(){ channelStep(-1); });
+  $('#chNext').addEventListener('click',function(){ channelStep(1); });
+  $('#tvPlay').addEventListener('click',tvPlay);
+  $('#sndBtn').addEventListener('click',function(){
+    state.tv.soundOn=!state.tv.soundOn;
+    this.textContent=state.tv.soundOn?'🔊':'🔇';
+    this.setAttribute('aria-pressed',String(state.tv.soundOn));
+    if(state.tv.soundOn) boop();
+    toast(state.tv.soundOn?'🔊 Channel-surf sound on':'🔇 Sound muted');
+  });
+
+  // keyboard surfing — only while TV screen is active and not typing in a field
+  window.addEventListener('keydown',function(e){
+    if(state.screen!=='tv') return;
+    var tag=(e.target&&e.target.tagName)||'';
+    if(/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+    if(e.key==='ArrowLeft'||e.key==='ArrowUp'){ e.preventDefault(); channelStep(-1); }
+    else if(e.key==='ArrowRight'||e.key==='ArrowDown'){ e.preventDefault(); channelStep(1); }
+  });
+
+  // swipe on the featured surface
+  (function(){
+    var sc=$('#tvScreen'); if(!sc) return;
+    var sx=0,sy=0,stime=0;
+    sc.addEventListener('touchstart',function(e){var t=e.changedTouches[0];sx=t.clientX;sy=t.clientY;stime=Date.now();},{passive:true});
+    sc.addEventListener('touchend',function(e){
+      var t=e.changedTouches[0], dx=t.clientX-sx, dy=t.clientY-sy;
+      if(Date.now()-stime>800) return;
+      if(Math.max(Math.abs(dx),Math.abs(dy))<32) return;
+      if(Math.abs(dx)>Math.abs(dy)) channelStep(dx<0?1:-1);
+      else channelStep(dy<0?1:-1);
+    },{passive:true});
+  })();
+
+  /* ---------------------------------------------------------------
+     ORDER-BAR SYNC  (keeps dashboard/delivery/tv reading coherent)
+     --------------------------------------------------------------- */
+  function syncOrderBar(){
+    state.product.name = $('#pName').value.trim() || 'Ledgerly';
+    state.product.one  = $('#pOne').value.trim()  || 'Bookkeeping on autopilot';
+    state.product.email= $('#pEmail').value.trim();
+    state.product.url  = $('#pUrl').value.trim();
+    $('#obName').textContent = state.product.name;
+    $('#obOne').textContent  = state.product.one;
+    $('#obTier').textContent = tierMap[state.tier];
+    $('#dvName').textContent = state.product.name;
+    $('#posterBrand').textContent = state.product.name.toUpperCase();
+    refreshWatermark();
+  }
+
+  /* ---------------------------------------------------------------
+     SIMULATE ORDER  (re-runnable full auto-journey)
+     --------------------------------------------------------------- */
+  function prefillIntake(){
+    $('#pName').value='Ledgerly';
+    $('#pOne').value='Bookkeeping on autopilot';
+    $('#pEmail').value='founder@ledgerly.app';
+    $('#pUrl').value='ledgerly.app';
+    // reset & re-add assets
+    state.assets.logo=false; $('#logoAdd').style.display=''; $$('#logoThumbs .thumb').forEach(function(x){x.remove();});
+    state.assets.shots=0;    $('#shotAdd').style.display=''; $$('#shotThumbs .thumb').forEach(function(x){x.remove();});
+    addLogo();
+    var added=0; var iv=setInterval(function(){ addShot(); if(++added>=4) clearInterval(iv); },180);
+    // tier = launch
+    $$('#tiers .tier').forEach(function(x){x.setAttribute('aria-pressed', x.getAttribute('data-tier')==='launch'?'true':'false');});
+    state.tier='launch';
+    syncOrderBar();
+  }
+
+  function simulate(){
+    go('intake');
+    prefillIntake();
+    toast('✍️ Filling in a sample order…');
+    setTimeout(function(){ runPipeline(); }, 1500);
+  }
+
+  $('#simBtn').addEventListener('click', simulate);
+  $('#rerunBtn').addEventListener('click', function(){ syncOrderBar(); runPipeline(); });
+  $('#makeBtn').addEventListener('click', function(){
+    // Real order path: validate -> write to Convex -> run the pipeline view.
+    var name=$('#pName').value.trim(), one=$('#pOne').value.trim(),
+        email=$('#pEmail').value.trim(), url=$('#pUrl').value.trim();
+    if(!name){ toast('✋ Product name is required'); $('#pName').focus(); return; }
+    if(!one){ toast('✋ One-liner is required — it drives your script'); $('#pOne').focus(); return; }
+    if(!EMAIL_RE.test(email)){ toast('✋ Valid email required — your trailer lands there'); $('#pEmail').focus(); return; }
+    syncOrderBar();
+    if(!CONVEX_SITE_URL){
+      toast('⚠️ Demo mode — backend not wired yet, order not recorded');
+      runPipeline();
+      return;
+    }
+    var btn=$('#makeBtn'); btn.disabled=true; btn.textContent='Placing order…';
+    apiPost('/api/order', { email:email, productName:name, oneLiner:one, url:url||undefined, tier:TIER_API[state.tier] })
+      .then(function(r){
+        state.jobId=r.jobId;
+        toast('🧾 Order '+String(r.jobId).slice(-6)+' placed — crew starting!');
+        runPipeline();
+      })
+      .catch(function(err){ toast('😖 Order failed: '+esc(err.message)+' — try again or find us at the table'); })
+      .finally(function(){ btn.disabled=false; btn.textContent='🚀 Make my trailer'; });
+  });
+
+  // keep order bar synced with typing
+  ['#pName','#pOne'].forEach(function(sel){ $(sel).addEventListener('input',syncOrderBar); });
+
+  /* ---------------------------------------------------------------
+     INIT
+     --------------------------------------------------------------- */
+  renderGuide();
+  syncOrderBar();
+})();
 </script>
 </body>
 </html>
