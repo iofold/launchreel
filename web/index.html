@@ -630,7 +630,7 @@
     </div>
 
     <div class="card qr-cta">
-      <div class="qr"><div class="qgrid" id="qr" aria-label="QR code placeholder"></div></div>
+      <div class="qr"><img id="qrImg" alt="Scan to claim your free teaser" style="width:100%;height:100%;object-fit:contain;image-rendering:pixelated;border-radius:8px"></div>
       <div>
         <h2>Get your free teaser 🎁</h2>
         <p style="font-weight:700;margin-top:8px;max-width:40ch">Scan the code, drop your email, and we'll build you a 10-second watermarked teaser on the spot. Upgrade anytime.</p>
@@ -642,6 +642,15 @@
 </main>
 
 <div id="confetti" aria-hidden="true"></div>
+<div id="payModal" style="display:none;position:fixed;inset:0;background:rgba(20,15,5,.55);z-index:60;align-items:center;justify-content:center;padding:20px">
+  <div role="dialog" aria-modal="true" aria-label="Pay by UPI" style="background:#FFFDF5;border:3px solid #111;border-radius:16px;box-shadow:8px 8px 0 #111;max-width:360px;width:100%;padding:22px;text-align:center">
+    <h2 id="payTitle" style="font-size:1.4rem">Pay ₹999 · UPI</h2>
+    <img id="payQr" alt="UPI payment QR placeholder" style="width:230px;max-width:70vw;margin:14px auto;display:block;image-rendering:pixelated;border:3px solid #111;border-radius:10px">
+    <p style="font-size:.85rem;font-weight:700;margin:0 0 6px">Scan with any UPI app · we mark it paid in the live order book while you watch.</p>
+    <p style="font-size:.75rem;color:#6b625a;margin:0 0 14px">⚠️ Placeholder code for now — it currently claims the <b>free teaser</b> offer. Real UPI QR drops in shortly.</p>
+    <button class="btn primary" id="payClose" type="button" style="width:100%">Done</button>
+  </div>
+</div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>window.CONVEX_SITE_URL = "https://kindhearted-fish-695.convex.site";</script>
@@ -853,26 +862,16 @@
   });
 
   // QR placeholder (deterministic pattern + finder squares)
-  (function buildQR(){
-    var N=15, grid=$('#qr');
-    grid.style.gridTemplateColumns='repeat('+N+',1fr)';
-    grid.style.gridTemplateRows='repeat('+N+',1fr)';
-    function finder(r,c){ return (r<4&&c<4)||(r<4&&c>N-5)||(r>N-5&&c<4); }
-    var seed=7;
-    for(var r=0;r<N;r++){for(var c=0;c<N;c++){
-      var i=document.createElement('i');
-      var on;
-      if(finder(r,c)){
-        var fr=r>N-5?r-(N-5):r, fc=c>N-5?c-(N-5):c;
-        on = (fr===0||fr===3||fc===0||fc===3||(fr>=1&&fr<=2&&fc>=1&&fc<=2));
-      } else {
-        seed=(seed*1103515245+12345)&0x7fffffff;
-        on=((seed>>7)&1)===1;
-      }
-      i.style.background= on?'var(--ink)':'transparent';
-      grid.appendChild(i);
-    }}
-  })();
+  var QR_DATAURI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQgAAAEICAIAAAAslP2oAAAFG0lEQVR4nO3dsYokNxRAUY/xFxiH/v8vc2icTTiMY8OthQcSUnnPiXura3r7Iii1pI/vr89fgP/69fQNwI2EAUEYEIQBQRgQhAFBGBCEAUEYEIQBQRgQhAFBGBCEAUEYEH6b/oPf//hzx30s98/ff41eP/27ptefvu/u6z/Z/bmdMv27jBgQhAFBGBCEAUEYEIQBQRgQxvMYT1Y9d5+aPkdf9Vx/1fP7U/MV0+tM7/Mt34cnRgwIwoAgDAjCgCAMCMKAIAwIy+Yxntz2vH/3vMT0fZ9M5xN2X3+V274PT4wYEIQBQRgQhAFBGBCEAUEYELbPY7zF7vUGu+clpu/LjxkxIAgDgjAgCAOCMCAIA4IwIPx08xhvPy9i1XyI+Y0fM2JAEAYEYUAQBgRhQBAGBGFA2D6PceqchCernuvfds7GKrv3m7rt+/DEiAFBGBCEAUEYEIQBQRgQhAFh2TzGbc/jn0yf0696/dTu+Zbd9/+W78MTIwYEYUAQBgRhQBAGBGFAEAaEj++vz9P3cIXdz/tv25/qyVvWS+xmxIAgDAjCgCAMCMKAIAwIwoAwXo9xaj3Dqtfv9pZ5gFOf56rr775PIwYEYUAQBgRhQBAGBGFAEAaE8XqM2/YLum3+ZOq25/dv/7tWXceIAUEYEIQBQRgQhAFBGBCEAWG8HmP3Pkun5hOmTs2fnFpH8ZbzQFYxYkAQBgRhQBAGBGFAEAYEYUBYth7jtvmNJ7etJ5m6bT+ut7zvlBEDgjAgCAOCMCAIA4IwIAgDwvZzvk/NP5w6z+G29SSn9ps6NR+y6n6MGBCEAUEYEIQBQRgQhAFBGBCWnfO9ym3zHrfNP5z6/G+z+/MxYkAQBgRhQBAGBGFAEAYEYUAYz2M8mT5Xvm3dwqr5k937Ka1aXzF12/5du69vxIAgDAjCgCAMCMKAIAwIwoCw7Jzvt1zn1LnUbzl3YtX93Pb/MmXEgCAMCMKAIAwIwoAgDAjCgLBsPcap/YhOraOYXmdq97qUU9fZvZ5k1ffBiAFBGBCEAUEYEIQBQRgQhAHh2L5Su993+vq37Fu1yql1Gruv73wM2EgYEIQBQRgQhAFBGBCEAeHj++tz9A/e/tx6931O3/ft+0ed2g9q9/+7EQOCMCAIA4IwIAgDgjAgCAPCeB7jye7nyv/X5/c/m7fM5xgxIAgDgjAgCAOCMCAIA4IwIGxfj7H73Oup2373f2rfrdvmYU7tr/XEiAFBGBCEAUEYEIQBQRgQhAFh2XqMt7jtd/9vWQfy9r/XvlKwgDAgCAOCMCAIA4IwIAgDwvic79t+x//k6bn1qd/9r5oP2b0v09Tu9Tan5nOMGBCEAUEYEIQBQRgQhAFBGBDG8xhPbpsfWGXV33Xbvkm3nZs+tXt+w4gBQRgQhAFBGBCEAUEYEIQBYdk8xpNT+wI9+b+eRz59/VvO8TjFiAFBGBCEAUEYEIQBQRgQhAFh+zzGbaa/479t/6Unt11n9+e2mxEDgjAgCAOCMCAIA4IwIAgDwk83j3Fqfch0nmR6vsfu8yV2r5e4bd2IEQOCMCAIA4IwIAgDgjAgCAPC9nmM2/YLWjUPsPt9V7ntXPbd6z1WXd+IAUEYEIQBQRgQhAFBGBCEAWHZPMZtz8uf7F63MHXbORW3ve/UqvkNIwYEYUAQBgRhQBAGBGFAEAaEj++vz9P3ANcxYkAQBgRhQBAGBGFAEAYEYUAQBgRhQBAGBGFAEAYEYUAQBgRhQPgXCGU3sU1Pxd8AAAAASUVORK5CYII=";
+  document.getElementById('qrImg').src = QR_DATAURI;
+  var payModal = document.getElementById('payModal');
+  document.getElementById('payQr').src = QR_DATAURI;
+  function showPay(label){
+    document.getElementById('payTitle').textContent = label;
+    payModal.style.display = 'flex';
+  }
+  document.getElementById('payClose').addEventListener('click', function(){ payModal.style.display='none'; });
+  payModal.addEventListener('click', function(e){ if(e.target===payModal) payModal.style.display='none'; });
 
   /* ---------------------------------------------------------------
      NAVIGATION  (persistent nav + go(screen))
@@ -1192,8 +1191,8 @@
   // delivery action buttons
   $('#dlBtn').addEventListener('click',function(){ toast('⬇️ Downloading '+($('#dvName').textContent)+'-trailer.mp4 (1080×1920)…'); });
   $('#xBtn').addEventListener('click',function(){ toast('𝕏 Opening X with your post prefilled…'); });
-  $('#upBtn').addEventListener('click',function(){ toast('✨ Upgrading to the ₹2,999 Content Pack…'); });
-  $('#rmwBtn').addEventListener('click',function(){ $('#posterWmark').textContent=''; toast('🧼 Watermark removed — clean export unlocked'); });
+  $('#upBtn').addEventListener('click',function(){ showPay('Pay ₹2,999 · Content Pack · UPI'); });
+  $('#rmwBtn').addEventListener('click',function(){ showPay('Pay ₹999 · Launch Trailer · UPI'); });
   $('#claimBtn').addEventListener('click',function(){
     // QR -> email claim = the signup event (rubric: Signups 20x, live-DB-verified).
     var email=(prompt('Where should we send your free teaser? (email)')||'').trim();
