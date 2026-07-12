@@ -563,6 +563,7 @@ def process(job: dict) -> None:
         "--product-name", job.get("productName") or "", "--one-liner", job.get("oneLiner") or "",
         "--url", job.get("url") or "", "--tier", job.get("tier") or "teaser",
         "--out", storyboard_path, "--vo-out", vo_txt,
+        "--email", job.get("email") or "",  # recall the customer's learned preferences
         "--meta-out", os.path.join(bundle_dir, "storyboard.meta.json"),
     ], timeout=300)
 

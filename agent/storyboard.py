@@ -212,9 +212,13 @@ Rules:
                 "faithfully in this cut:\n" + fb_text)
     notes_block = ("CUSTOMER NOTES (highest priority):\n" + "\n\n".join(notes_lines) + "\n\n") if notes_lines else ""
 
+    pref_block = ctx.get("preferences_block") or ""
+    pref_section = ("RETURNING-CUSTOMER MEMORY:\n" + pref_block + "\n\n") if pref_block else ""
+
     user = (
         f"Product context:\n{brief_block}\n\n"
         + notes_block
+        + pref_section
         + (f"Source page copy (for tone/wording, excerpt):\n{page_excerpt}\n\n" if page_excerpt else "")
         + schema_rules
     )
@@ -562,6 +566,7 @@ def main() -> int:
     ap.add_argument("--model", default="gpt-5-mini")
     ap.add_argument("--schema", default=os.path.join(REPO, "render", "storyboard.schema.json"))
     ap.add_argument("--meta-out", default=None, help="optional path to write generation meta JSON")
+    ap.add_argument("--email", default="", help="owner email — recalls their stored preferences into the prompt")
     args = ap.parse_args()
 
     bundle = os.path.abspath(args.bundle_dir)
@@ -586,6 +591,15 @@ def main() -> int:
     product_name = args.product_name or brief.get("productName") or display_url(args.url).title() or "Untitled"
     one_liner = args.one_liner or brief.get("oneLiner") or ""
 
+    # Recall the customer's durable preferences (learned from past closed jobs) and
+    # fold them into the prompt. Lazy import avoids a storyboard<->preferences cycle.
+    pref_block = ""
+    try:
+        import preferences as _prefs
+        pref_block = _prefs.load_prompt_block(email=(args.email or None), company=product_name)
+    except Exception:  # noqa: BLE001 — recall is best-effort
+        pref_block = ""
+
     ctx = {
         "brief": brief,
         "screenshots": screenshots,
@@ -594,6 +608,7 @@ def main() -> int:
         "one_liner": one_liner,
         "url": args.url,
         "page_excerpt": page_excerpt,
+        "preferences_block": pref_block,
     }
     log(f"product={product_name!r} tier={args.tier} screenshots={screenshots or '(none)'}")
 

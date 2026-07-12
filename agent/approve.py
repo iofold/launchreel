@@ -176,6 +176,25 @@ def main() -> int:
         log("no recipient email (guarded endpoint not deployed and no --email) — "
             "status flipped to delivered but delivery email not sent")
 
+    # LEARN: delivery is a job close — distill durable preferences into the dossier
+    # (email + company) from whatever interaction history the bundle holds. Best-effort.
+    try:
+        sys.path.insert(0, os.path.join(REPO, "agent"))
+        import preferences as _prefs
+        bb: dict = {}
+        bp = os.path.join(REPO, ".tmp", "scout", args.job_id, "brief.json")
+        if os.path.exists(bp):
+            with open(bp, encoding="utf-8") as fh:
+                bb = json.load(fh)
+        _prefs.distill_and_store(to, job.get("productName"), {
+            "product": job.get("productName"),
+            "brandTone": bb.get("tone"),
+            "customerNotes": bb.get("customerNotes"),
+            "feedbackNotes": bb.get("feedbackNotes"),
+        })
+    except Exception as e:  # noqa: BLE001 — never fail the approval on a dossier write
+        log(f"preference distill skipped: {e}")
+
     print(json.dumps({"jobId": args.job_id, "action": "approve", "status": "delivered",
                       "emailedTo": to if emailed else None, "emailSent": emailed}))
     return 0

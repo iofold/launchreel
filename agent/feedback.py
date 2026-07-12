@@ -733,6 +733,21 @@ def _handle_delivered(event_id: str, email, text: str, subject: str, job, send_e
             "posterUrl": poster_url,
             "dashboardUrl": load_env("WEB_BASE_URL") or "https://launchreel.pages.dev",
         })
+
+    # LEARN: a processed revision is a job close — distill durable preferences into the
+    # customer's dossier (email + company). Best-effort; never affects the ack/email above.
+    try:
+        import preferences as _prefs
+        bb = sb_mod.read_json(os.path.join(bundle_dir, "brief.json")) or {}
+        _prefs.distill_and_store(email, product, {
+            "product": product,
+            "brandTone": bb.get("tone"),
+            "customerNotes": bb.get("customerNotes"),
+            "feedbackNotes": bb.get("feedbackNotes"),
+            "revisions": [{"request": text, "whatChanged": what_changed}],
+        })
+    except Exception as e:  # noqa: BLE001 — preference learning must never fail the loop
+        log(f"preference distill skipped: {e}")
     return "revised"
 
 
